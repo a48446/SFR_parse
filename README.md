@@ -5,3 +5,4 @@ build on Python 3.8.10
 
 2. install ffmpeg
 
+3. python main.py

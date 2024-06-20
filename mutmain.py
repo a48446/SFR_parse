@@ -1,27 +1,34 @@
+import os
 import cv2
 import numpy as np
 import tkinter as tk
 from tkinter import ttk, filedialog
 from PIL import Image, ImageTk
-import threading
-import queue
+from multiprocessing import Process, Queue
 import datetime
 import subprocess
-import os
 import re
-from scipy import stats
-from scipy.fftpack import fft
+
+def stream(rtsp_url, frame_queue):
+    cap = cv2.VideoCapture(rtsp_url)
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if not frame_queue.full():
+            frame_queue.put(frame)
+    cap.release()
 
 class MTFApplication:
     def __init__(self, master):
         self.master = master
-        self.frame_queue = queue.Queue(maxsize=10)
+        self.frame_queue = Queue(maxsize=10)
         self.roi_list = []
         self.roi_ids = []
         self.roi_labels = []
         self.current_roi = None
         self.current_frame = None
-        self.stream_thread = None
+        self.stream_process = None
         self.setup_ui()
         self.master.after(0, self.update_canvas)
         self.master.after(0, self.update_status)
@@ -181,23 +188,11 @@ class MTFApplication:
             self.status_label.config(text="Connection timed out", foreground="red")
 
     def start_rtsp_stream(self, rtsp_url):
-        def stream():
-            cap = cv2.VideoCapture(rtsp_url)
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                if not self.frame_queue.full():
-                    self.frame_queue.put(frame)
-                self.current_frame = frame
-            cap.release()
+        if self.stream_process and self.stream_process.is_alive():
+            self.stream_process.terminate()
 
-        if self.stream_thread and self.stream_thread.is_alive():
-            self.stream_thread.join()
-
-        self.stream_thread = threading.Thread(target=stream)
-        self.stream_thread.daemon = True
-        self.stream_thread.start()
+        self.stream_process = Process(target=stream, args=(rtsp_url, self.frame_queue))
+        self.stream_process.start()
 
     def capture_screenshot(self):
         if self.canvas.imgtk:
@@ -244,7 +239,7 @@ class MTFApplication:
         username = self.username_entry.get()
         password = self.password_entry.get()
         status = self.monitor_status(ip, username, password)
-        if status == "idle" or status == "done":
+        if status == "idle":
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute=1']
             try:
                 result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -261,7 +256,7 @@ class MTFApplication:
         max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
         min_optical_zoom = 1
         status = self.monitor_status(ip, username, password)
-        if status == "idle" or status == "done":
+        if status == "idle":
             if max_optical_zoom:
                 middle_optical_zoom = (float(max_optical_zoom) + min_optical_zoom) / 2
                 command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={middle_optical_zoom}']
@@ -280,7 +275,7 @@ class MTFApplication:
         max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
         command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={max_optical_zoom}']
         status = self.monitor_status(ip, username, password)
-        if status == "idle" or status == "done":
+        if status == "idle":
             try:
                 result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
                 print(result.stdout)
