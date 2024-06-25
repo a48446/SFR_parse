@@ -1,27 +1,38 @@
+import os
 import cv2
 import numpy as np
 import tkinter as tk
 from tkinter import ttk, filedialog
 from PIL import Image, ImageTk
-import threading
-import queue
+from multiprocessing import Process, Queue, set_start_method, freeze_support
 import datetime
 import subprocess
-import os
 import re
+import sys
 from scipy import stats
 from scipy.fftpack import fft
+
+def stream(rtsp_url, frame_queue):
+    cap = cv2.VideoCapture(rtsp_url)
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if not frame_queue.full():
+            frame_queue.put(frame)
+    cap.release()
 
 class MTFApplication:
     def __init__(self, master):
         self.master = master
-        self.frame_queue = queue.Queue(maxsize=10)
+        self.frame_queue = Queue(maxsize=10)
         self.roi_list = []
         self.roi_ids = []
         self.roi_labels = []
         self.current_roi = None
         self.current_frame = None
-        self.stream_thread = None
+        self.stream_process = None
+        self.device_var = tk.StringVar(value="SPD-T5390")  # 初始化StringVar
         self.setup_ui()
         self.master.after(0, self.update_canvas)
         self.master.after(0, self.update_status)
@@ -34,13 +45,16 @@ class MTFApplication:
     def create_widgets(self):
         self.ip_label = ttk.Label(self.master, text="IP:")
         self.ip_entry = ttk.Entry(self.master)
+        self.device_label = ttk.Label(self.master, text="Device:")  # 新增設備標籤
+        self.device_combobox = ttk.Combobox(self.master, textvariable=self.device_var)
+        self.device_combobox['values'] = ("SPD-T5390","SPD-T5391","SPD-T5373","SPD-T5375", "other")  # 設定選項
         self.username_label = ttk.Label(self.master, text="Username:")
         self.username_entry = ttk.Entry(self.master)
         self.password_label = ttk.Label(self.master, text="Password:")
         self.password_entry = ttk.Entry(self.master, show="*")
         self.start_button = ttk.Button(self.master, text="Start", command=self.on_start)
         self.status_label = ttk.Label(self.master, text="Not Connected")
-        self.canvas = tk.Canvas(self.master, width=800, height=600, bg='gray')
+        self.canvas = tk.Canvas(self.master, width=800 , height=600, bg='gray')
         self.roi_listbox_label = ttk.Label(self.master, text="Selected ROIs:")
         self.roi_listbox = tk.Listbox(self.master, height=5)
         self.clear_button = ttk.Button(self.master, text="Clear ROIs", command=self.clear_rois)
@@ -72,6 +86,8 @@ class MTFApplication:
     def arrange_grid(self):
         self.ip_label.grid(row=0, column=0, sticky='w')
         self.ip_entry.grid(row=0, column=1, padx=5, pady=5, sticky='w')
+        self.device_label.grid(row=0, column=2, sticky='w')  # 安排設備標籤位置
+        self.device_combobox.grid(row=0, column=3, padx=5, pady=5, sticky='w')  # 安排下拉選單位置
         self.username_label.grid(row=1, column=0, sticky='w')
         self.username_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
         self.password_label.grid(row=2, column=0, sticky='w')
@@ -86,7 +102,7 @@ class MTFApplication:
         self.roi_listbox_label.grid(row=7, column=0, sticky='w')
         self.roi_listbox.grid(row=7, column=1, padx=5, pady=5, sticky='w')
         self.clear_button.grid(row=8, column=0, columnspan=2, padx=5, pady=5, sticky='w')
-        self.camera_status_label.grid(row=17, column=0, columnspan=2, padx=5, pady=5, sticky='w')
+        self.camera_status_label.grid(row=3, column=2, columnspan=2, padx=5, pady=5, sticky='w')
         self.canvas.grid(row=0, column=10, rowspan=20, columnspan=10, padx=10, pady=10, sticky='nsew')
 
     def bind_canvas_events(self):
@@ -122,10 +138,11 @@ class MTFApplication:
     def update_canvas(self):
         if not self.frame_queue.empty():
             frame = self.frame_queue.get()
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
-            frame = Image.fromarray(frame)
-            frame = frame.resize((800, 600))  # Adjust this to match the canvas size
-            imgtk = ImageTk.PhotoImage(image=frame)
+            self.current_frame = frame  # 保留高分辨率图像
+            frame_resized = cv2.resize(frame, (800 , 600))  # 低分辨率用于显示
+            frame_resized = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+            frame_resized = Image.fromarray(frame_resized)
+            imgtk = ImageTk.PhotoImage(image=frame_resized)
             self.canvas.imgtk = imgtk
             self.canvas.create_image(0, 0, anchor=tk.NW, image=imgtk)
             self.draw_rois()  # Redraw the ROIs on the new frame
@@ -160,6 +177,7 @@ class MTFApplication:
         ip = self.ip_entry.get()
         username = self.username_entry.get()
         password = self.password_entry.get()
+
         if not ip or not username or not password:
             self.status_label.config(text="Incomplete credentials", foreground="red")
             return
@@ -176,31 +194,20 @@ class MTFApplication:
                 return
 
             self.status_label.config(text="Connected", foreground="green")
-            self.start_rtsp_stream(rtsp_url)
+            self.start_rtsp_stream(rtsp_url)  # 确保在连接成功后启动 RTSP 流
+
         except subprocess.TimeoutExpired:
             self.status_label.config(text="Connection timed out", foreground="red")
 
     def start_rtsp_stream(self, rtsp_url):
-        def stream():
-            cap = cv2.VideoCapture(rtsp_url)
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                if not self.frame_queue.full():
-                    self.frame_queue.put(frame)
-                self.current_frame = frame
-            cap.release()
+        if self.stream_process and self.stream_process.is_alive():
+            self.stream_process.terminate()
 
-        if self.stream_thread and self.stream_thread.is_alive():
-            self.stream_thread.join()
-
-        self.stream_thread = threading.Thread(target=stream)
-        self.stream_thread.daemon = True
-        self.stream_thread.start()
+        self.stream_process = Process(target=stream, args=(rtsp_url, self.frame_queue))
+        self.stream_process.start()
 
     def capture_screenshot(self):
-        if self.canvas.imgtk:
+        if self.current_frame is not None:
             now = datetime.datetime.now()
             formatted_time = now.strftime("%m%d_%H%M")
             default_filename = f"capturescreenshot_{formatted_time}.png"
@@ -211,7 +218,9 @@ class MTFApplication:
                 filetypes=[("PNG files", "*.png")]
             )
             if file_path:
-                self.canvas.imgtk._PhotoImage__photo.write(file_path, format='png')
+                frame_rgb = cv2.cvtColor(self.current_frame, cv2.COLOR_BGR2RGB)  # 转换为RGB格式
+                image = Image.fromarray(frame_rgb)  # 转换为PIL Image
+                image.save(file_path, format='png')  # 保存图像
                 print("Screenshot saved at:", file_path)
             else:
                 print("Screenshot not saved.")
@@ -244,15 +253,28 @@ class MTFApplication:
         username = self.username_entry.get()
         password = self.password_entry.get()
         status = self.monitor_status(ip, username, password)
-        if status == "idle" or status == "done":
-            command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute=1']
-            try:
-                result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                print(result.stdout)
-            except Exception as e:
-                print(f"Error executing curl command: {e}")
+        device_type = self.device_var.get()  # 獲取當前選中的設備類型
+        if device_type[0:3] == "SPD":
+            device_list = device_type.split("-")[0:4][1]
+            command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=100']
+            if status == "idle" or status == "done":
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    print(result.stdout)
+                except Exception as e:
+                    print(f"Error executing curl command: {e}")
+            else:
+                print("Camera is busy. Please wait until it is idle.")
         else:
-            print("Camera is busy. Please wait until it is idle.")
+            if status == "idle" or status == "done":
+                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute=1']
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    print(result.stdout)
+                except Exception as e:
+                    print(f"Error executing curl command: {e}")
+            else:
+                print("Camera is busy. Please wait until it is idle.")
 
     def on_middle(self):
         ip = self.ip_entry.get()
@@ -261,6 +283,30 @@ class MTFApplication:
         max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
         min_optical_zoom = 1
         status = self.monitor_status(ip, username, password)
+        device_type = self.device_var.get()  # 獲取當前選中的設備類型
+
+        if device_type[0:3] == "SPD":
+            device_list = device_type.split("-")[0:4][1]
+            if device_list == "T5390":
+                max_optical_zoom = 3000   
+            if device_list == "T5391":
+                max_optical_zoom = 2200
+            if device_list == "T5373":
+                max_optical_zoom = 3000
+            if device_list == "T5375":
+                max_optical_zoom = 4200
+                
+            if status == "idle" or status == "done":
+                middle_optical_zoom = (float(max_optical_zoom) + min_optical_zoom) / 2
+                print(middle_optical_zoom)
+                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute={middle_optical_zoom}']
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    print(result.stdout)
+                except Exception as e:
+                    print(f"Error executing curl command: {e}")
+            else:
+                print("Camera is busy. Please wait until it is idle.")
         if status == "idle" or status == "done":
             if max_optical_zoom:
                 middle_optical_zoom = (float(max_optical_zoom) + min_optical_zoom) / 2
@@ -277,17 +323,39 @@ class MTFApplication:
         ip = self.ip_entry.get()
         username = self.username_entry.get()
         password = self.password_entry.get()
-        max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
-        command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={max_optical_zoom}']
         status = self.monitor_status(ip, username, password)
-        if status == "idle" or status == "done":
-            try:
-                result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                print(result.stdout)
-            except Exception as e:
-                print(f"Error executing curl command: {e}")
+        device_type = self.device_var.get()  # 獲取當前選中的設備類型
+        if device_type[0:3] == "SPD":
+            device_list = device_type.split("-")[0:4][1]
+            if device_list == "T5390":
+                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=3000']
+            if device_list == "T5391":
+                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=2200']
+            if device_list == "T5373":
+                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=3000']
+            if device_list == "T5375":
+                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=4200']
+
+            if status == "idle" or status == "done":
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    print(result.stdout)
+                except Exception as e:
+                    print(f"Error executing curl command: {e}")
+            else:
+                print("Camera is busy. Please wait until it is idle.")
         else:
-            print("Camera is busy. Please wait until it is idle.")
+            max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
+            command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={max_optical_zoom}']
+            
+            if status == "idle" or status == "done":
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    print(result.stdout)
+                except Exception as e:
+                    print(f"Error executing curl command: {e}")
+            else:
+                print("Camera is busy. Please wait until it is idle.")
 
     def on_autofocus(self):
         ip = self.ip_entry.get()
@@ -402,10 +470,13 @@ class SFR:
         return mtf_data, mtf50, 0  # mtf50p not used in this example
 
 def main():
+    set_start_method("spawn")
     root = tk.Tk()
-    root.geometry("1400x900")
+    root.title("MTFTestInterface")
+    root.geometry("1600x900")
     app = MTFApplication(root)
     root.mainloop()
 
 if __name__ == "__main__":
+    freeze_support()
     main()

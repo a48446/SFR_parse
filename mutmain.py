@@ -1,37 +1,20 @@
 import os
-import cv2
-import numpy as np
 import tkinter as tk
 from tkinter import ttk, filedialog
 from PIL import Image, ImageTk
-from multiprocessing import Process, Queue
-import datetime
 import subprocess
+import datetime
 import re
-
-def stream(rtsp_url, frame_queue):
-    cap = cv2.VideoCapture(rtsp_url)
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        if not frame_queue.full():
-            frame_queue.put(frame)
-    cap.release()
 
 class MTFApplication:
     def __init__(self, master):
         self.master = master
-        self.frame_queue = Queue(maxsize=10)
         self.roi_list = []
         self.roi_ids = []
         self.roi_labels = []
         self.current_roi = None
-        self.current_frame = None
-        self.stream_process = None
         self.setup_ui()
-        self.master.after(0, self.update_canvas)
-        self.master.after(0, self.update_status)
+        self.master.geometry("1400x900")
 
     def setup_ui(self):
         self.create_widgets()
@@ -126,18 +109,6 @@ class MTFApplication:
             self.update_roi_listbox()
             self.current_roi = None
 
-    def update_canvas(self):
-        if not self.frame_queue.empty():
-            frame = self.frame_queue.get()
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
-            frame = Image.fromarray(frame)
-            frame = frame.resize((800, 600))  # Adjust this to match the canvas size
-            imgtk = ImageTk.PhotoImage(image=frame)
-            self.canvas.imgtk = imgtk
-            self.canvas.create_image(0, 0, anchor=tk.NW, image=imgtk)
-            self.draw_rois()  # Redraw the ROIs on the new frame
-        self.master.after(40, self.update_canvas)  # Adjust timing based on frame rate
-
     def update_status(self):
         ip = self.ip_entry.get()
         username = self.username_entry.get()
@@ -188,14 +159,10 @@ class MTFApplication:
             self.status_label.config(text="Connection timed out", foreground="red")
 
     def start_rtsp_stream(self, rtsp_url):
-        if self.stream_process and self.stream_process.is_alive():
-            self.stream_process.terminate()
-
-        self.stream_process = Process(target=stream, args=(rtsp_url, self.frame_queue))
-        self.stream_process.start()
+        subprocess.Popen(['vlc', rtsp_url])
 
     def capture_screenshot(self):
-        if self.canvas.imgtk:
+        if self.current_frame is not None:
             now = datetime.datetime.now()
             formatted_time = now.strftime("%m%d_%H%M")
             default_filename = f"capturescreenshot_{formatted_time}.png"
@@ -206,7 +173,7 @@ class MTFApplication:
                 filetypes=[("PNG files", "*.png")]
             )
             if file_path:
-                self.canvas.imgtk._PhotoImage__photo.write(file_path, format='png')
+                self.current_frame.save(file_path, format='PNG')
                 print("Screenshot saved at:", file_path)
             else:
                 print("Screenshot not saved.")

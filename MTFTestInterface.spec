@@ -1,3 +1,5 @@
+# MTFTestInterface.spec
+
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
@@ -6,7 +8,13 @@ a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[],
-    hiddenimports=['numpy', 'cv2', 'PIL', 'tkinter', 'subprocess'],
+    hiddenimports=[
+        'numpy',
+        'scipy',
+        'cv2',
+        'PIL.Image',
+        'PIL.ImageTk',
+    ],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -29,5 +37,5 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # 改為 True 以顯示命令行輸出
+    console=False,  # If you need a console, set this to True
 )
