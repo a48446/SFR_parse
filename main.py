@@ -1,26 +1,38 @@
+import datetime
 import os
+import re
+import subprocess
+import sys
+import time
+import tkinter as tk
+from multiprocessing import Process, Queue, set_start_method, freeze_support
+from tkinter import ttk, filedialog
+
 import cv2
 import numpy as np
-import tkinter as tk
-from tkinter import ttk, filedialog
 from PIL import Image, ImageTk
-from multiprocessing import Process, Queue, set_start_method, freeze_support
-import datetime
-import subprocess
-import re
-import sys
 from scipy import stats
 from scipy.fftpack import fft
+
 
 def stream(rtsp_url, frame_queue):
     cap = cv2.VideoCapture(rtsp_url)
     while cap.isOpened():
-        ret, frame = cap.read()
+        start_time = datetime.datetime.now()
+        frame_interval = datetime.timedelta(seconds=0.033)
+        cap.grab()
+        end_time = datetime.datetime.now()
+        time_diff = (end_time - start_time)
+        if (time_diff > frame_interval) or (time_diff.total_seconds() < 0):
+            continue
+        time.sleep(0.01)
+        ret, frame = cap.retrieve()
         if not ret:
             break
         if not frame_queue.full():
             frame_queue.put(frame)
     cap.release()
+
 
 class MTFApplication:
     def __init__(self, master):
@@ -32,10 +44,9 @@ class MTFApplication:
         self.current_roi = None
         self.current_frame = None
         self.stream_process = None
-        self.device_var = tk.StringVar(value="SPD-T5390")  # 初始化StringVar
+        self.device_var = tk.StringVar(value="SPD-T5390")
         self.setup_ui()
-        self.master.after(0, self.update_canvas)
-        self.master.after(0, self.update_status)
+        self.disable_controls()
 
     def setup_ui(self):
         self.create_widgets()
@@ -45,16 +56,16 @@ class MTFApplication:
     def create_widgets(self):
         self.ip_label = ttk.Label(self.master, text="IP:")
         self.ip_entry = ttk.Entry(self.master)
-        self.device_label = ttk.Label(self.master, text="Device:")  # 新增設備標籤
+        self.device_label = ttk.Label(self.master, text="Device:")
         self.device_combobox = ttk.Combobox(self.master, textvariable=self.device_var)
-        self.device_combobox['values'] = ("SPD-T5390","SPD-T5391","SPD-T5373","SPD-T5375", "other")  # 設定選項
+        self.device_combobox['values'] = ("SPD-T5390", "SPD-T5391", "SPD-T5373", "SPD-T5375", "other")
         self.username_label = ttk.Label(self.master, text="Username:")
         self.username_entry = ttk.Entry(self.master)
         self.password_label = ttk.Label(self.master, text="Password:")
         self.password_entry = ttk.Entry(self.master, show="*")
         self.start_button = ttk.Button(self.master, text="Start", command=self.on_start)
         self.status_label = ttk.Label(self.master, text="Not Connected")
-        self.canvas = tk.Canvas(self.master, width=800 , height=600, bg='gray')
+        self.canvas = tk.Canvas(self.master, width=800, height=600, bg='gray')
         self.roi_listbox_label = ttk.Label(self.master, text="Selected ROIs:")
         self.roi_listbox = tk.Listbox(self.master, height=5)
         self.clear_button = ttk.Button(self.master, text="Clear ROIs", command=self.clear_rois)
@@ -78,27 +89,27 @@ class MTFApplication:
             mtf_labels = []
             for roi_idx in range(5):
                 mtf_label = ttk.Label(self.master, text=f'MTF{roi_idx + 1}=')
-                mtf_label.grid(column=2 + roi_idx, row=9 + idx, padx=5, pady=5, sticky='w')
+                mtf_label.grid(column=1 + roi_idx, row=9 + idx, padx=5, pady=5, sticky='e')
                 mtf_labels.append(mtf_label)
 
             self.roi_mtf_labels.append(mtf_labels)
 
     def arrange_grid(self):
-        self.ip_label.grid(row=0, column=0, sticky='w')
-        self.ip_entry.grid(row=0, column=1, padx=5, pady=5, sticky='w')
-        self.device_label.grid(row=0, column=2, sticky='w')  # 安排設備標籤位置
-        self.device_combobox.grid(row=0, column=3, padx=5, pady=5, sticky='w')  # 安排下拉選單位置
-        self.username_label.grid(row=1, column=0, sticky='w')
-        self.username_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
-        self.password_label.grid(row=2, column=0, sticky='w')
-        self.password_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
-        self.start_button.grid(row=3, column=0, padx=5, pady=5, sticky='w')
-        self.status_label.grid(row=3, column=1, padx=5, pady=5, sticky='w')
-        self.wide_end_button.grid(row=4, column=0, padx=5, pady=5, sticky='w')
-        self.middle_button.grid(row=4, column=1, padx=5, pady=5, sticky='w')
-        self.tele_end_button.grid(row=5, column=0, padx=5, pady=5, sticky='w')
-        self.autofocus_button.grid(row=5, column=1, padx=5, pady=5, sticky='w')
-        self.capture_button.grid(row=6, column=0, columnspan=2, padx=5, pady=5, sticky='w')
+        self.device_label.grid(row=0, column=0, sticky='w')
+        self.device_combobox.grid(row=0, column=1, padx=5, pady=5, sticky='w')
+        self.ip_label.grid(row=1, column=0, sticky='w')
+        self.ip_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
+        self.username_label.grid(row=2, column=0, sticky='w')
+        self.username_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
+        self.password_label.grid(row=3, column=0, sticky='w')
+        self.password_entry.grid(row=3, column=1, padx=5, pady=5, sticky='w')
+        self.start_button.grid(row=4, column=0, padx=5, pady=5, sticky='w')
+        self.status_label.grid(row=4, column=1, padx=5, pady=5, sticky='w')
+        self.wide_end_button.grid(row=5, column=0, padx=5, pady=5, sticky='w')
+        self.middle_button.grid(row=5, column=1, padx=5, pady=5, sticky='w')
+        self.tele_end_button.grid(row=6, column=0, padx=5, pady=5, sticky='w')
+        self.autofocus_button.grid(row=6, column=1, padx=5, pady=5, sticky='w')
+        self.capture_button.grid(row=6, column=2, columnspan=2, padx=5, pady=5, sticky='w')
         self.roi_listbox_label.grid(row=7, column=0, sticky='w')
         self.roi_listbox.grid(row=7, column=1, padx=5, pady=5, sticky='w')
         self.clear_button.grid(row=8, column=0, columnspan=2, padx=5, pady=5, sticky='w')
@@ -109,13 +120,14 @@ class MTFApplication:
         self.canvas.bind("<Button-1>", self.on_canvas_click)
         self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
+        self.roi_listbox.bind("<Double-1>", self.edit_roi)
 
     def on_canvas_click(self, event):
         if len(self.roi_list) < 5:
             self.current_roi = [event.x, event.y, event.x, event.y]
             roi_id = self.canvas.create_rectangle(*self.current_roi, outline='red', width=2, tags="current_roi")
             self.roi_ids.append(roi_id)
-            roi_label = self.canvas.create_text(event.x, event.y, anchor=tk.NW, text=f"ROI{len(self.roi_list)+1}", fill="red", font=("Arial", 10))
+            roi_label = self.canvas.create_text(event.x, event.y, anchor=tk.NW, text=f"ROI{len(self.roi_list) + 1}", fill="red", font=("Arial", 10))
             self.roi_labels.append(roi_label)
 
     def on_canvas_drag(self, event):
@@ -138,15 +150,15 @@ class MTFApplication:
     def update_canvas(self):
         if not self.frame_queue.empty():
             frame = self.frame_queue.get()
-            self.current_frame = frame  # 保留高分辨率图像
-            frame_resized = cv2.resize(frame, (800 , 600))  # 低分辨率用于显示
+            self.current_frame = frame
+            frame_resized = cv2.resize(frame, (800, 600))
             frame_resized = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
             frame_resized = Image.fromarray(frame_resized)
             imgtk = ImageTk.PhotoImage(image=frame_resized)
             self.canvas.imgtk = imgtk
             self.canvas.create_image(0, 0, anchor=tk.NW, image=imgtk)
             self.draw_rois()  # Redraw the ROIs on the new frame
-        self.master.after(40, self.update_canvas)  # Adjust timing based on frame rate
+        self.master.after(10, self.update_canvas)  # Adjust timing based on frame rate
 
     def update_status(self):
         ip = self.ip_entry.get()
@@ -161,7 +173,7 @@ class MTFApplication:
     def update_roi_listbox(self):
         self.roi_listbox.delete(0, tk.END)
         for i, roi in enumerate(self.roi_list):
-            self.roi_listbox.insert(tk.END, f"ROI{i+1}: {roi}")
+            self.roi_listbox.insert(tk.END, f"ROI{i + 1}: {roi}")
 
     def clear_rois(self):
         self.roi_list = []
@@ -194,7 +206,8 @@ class MTFApplication:
                 return
 
             self.status_label.config(text="Connected", foreground="green")
-            self.start_rtsp_stream(rtsp_url)  # 确保在连接成功后启动 RTSP 流
+            self.start_rtsp_stream(rtsp_url)
+            self.enable_controls()
 
         except subprocess.TimeoutExpired:
             self.status_label.config(text="Connection timed out", foreground="red")
@@ -205,6 +218,8 @@ class MTFApplication:
 
         self.stream_process = Process(target=stream, args=(rtsp_url, self.frame_queue))
         self.stream_process.start()
+        self.master.after(0, self.update_canvas)
+        self.master.after(0, self.update_status)
 
     def capture_screenshot(self):
         if self.current_frame is not None:
@@ -218,9 +233,9 @@ class MTFApplication:
                 filetypes=[("PNG files", "*.png")]
             )
             if file_path:
-                frame_rgb = cv2.cvtColor(self.current_frame, cv2.COLOR_BGR2RGB)  # 转换为RGB格式
-                image = Image.fromarray(frame_rgb)  # 转换为PIL Image
-                image.save(file_path, format='png')  # 保存图像
+                frame_rgb = cv2.cvtColor(self.current_frame, cv2.COLOR_BGR2RGB)
+                image = Image.fromarray(frame_rgb)
+                image.save(file_path, format='png')
                 print("Screenshot saved at:", file_path)
             else:
                 print("Screenshot not saved.")
@@ -253,7 +268,7 @@ class MTFApplication:
         username = self.username_entry.get()
         password = self.password_entry.get()
         status = self.monitor_status(ip, username, password)
-        device_type = self.device_var.get()  # 獲取當前選中的設備類型
+        device_type = self.device_var.get()
         if device_type[0:3] == "SPD":
             device_list = device_type.split("-")[0:4][1]
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=100']
@@ -283,19 +298,19 @@ class MTFApplication:
         max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
         min_optical_zoom = 1
         status = self.monitor_status(ip, username, password)
-        device_type = self.device_var.get()  # 獲取當前選中的設備類型
+        device_type = self.device_var.get()
 
         if device_type[0:3] == "SPD":
             device_list = device_type.split("-")[0:4][1]
             if device_list == "T5390":
-                max_optical_zoom = 3000   
+                max_optical_zoom = 3000
             if device_list == "T5391":
                 max_optical_zoom = 2200
             if device_list == "T5373":
                 max_optical_zoom = 3000
             if device_list == "T5375":
                 max_optical_zoom = 4200
-                
+
             if status == "idle" or status == "done":
                 middle_optical_zoom = (float(max_optical_zoom) + min_optical_zoom) / 2
                 print(middle_optical_zoom)
@@ -324,7 +339,7 @@ class MTFApplication:
         username = self.username_entry.get()
         password = self.password_entry.get()
         status = self.monitor_status(ip, username, password)
-        device_type = self.device_var.get()  # 獲取當前選中的設備類型
+        device_type = self.device_var.get()
         if device_type[0:3] == "SPD":
             device_list = device_type.split("-")[0:4][1]
             if device_list == "T5390":
@@ -347,7 +362,7 @@ class MTFApplication:
         else:
             max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={max_optical_zoom}']
-            
+
             if status == "idle" or status == "done":
                 try:
                     result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -375,12 +390,70 @@ class MTFApplication:
                 sfr = SFR(frame_image, roi)
                 results = sfr.calculate()
                 mtf50 = results['MTF50']
-                self.roi_mtf_labels[label_idx][idx].config(text=f'MTF{idx+1}={mtf50:.2f}')
+                self.roi_mtf_labels[label_idx][idx].config(text=f'MTF{idx + 1}={mtf50:.2f}')
 
     def draw_rois(self):
         for idx, roi in enumerate(self.roi_list):
             self.canvas.create_rectangle(*roi, outline='red', width=2)
-            self.canvas.create_text(roi[0], roi[1], anchor=tk.NW, text=f"ROI{idx+1}", fill="red", font=("Arial", 10))
+            self.canvas.create_text(roi[0], roi[1], anchor=tk.NW, text=f"ROI{idx + 1}", fill="red", font=("Arial", 10))
+
+    def edit_roi(self, event):
+        selected_index = self.roi_listbox.curselection()
+        if not selected_index:
+            return
+        selected_index = selected_index[0]
+        roi = self.roi_list[selected_index]
+
+        edit_window = tk.Toplevel(self.master)
+        edit_window.title(f"Edit ROI{selected_index + 1}")
+
+        labels = ['X1:', 'Y1:', 'X2:', 'Y2:']
+        entries = []
+        for i, val in enumerate(roi):
+            label = ttk.Label(edit_window, text=labels[i])
+            label.grid(row=i, column=0, padx=5, pady=5)
+            entry = ttk.Entry(edit_window)
+            entry.insert(0, val)
+            entry.grid(row=i, column=1, padx=5, pady=5)
+            entries.append(entry)
+
+        def on_save():
+            new_roi = tuple(int(entry.get()) for entry in entries)
+            self.roi_list[selected_index] = new_roi
+            self.update_roi_listbox()
+            self.canvas.delete(self.roi_ids[selected_index])
+            self.canvas.delete(self.roi_labels[selected_index])
+            roi_id = self.canvas.create_rectangle(*new_roi, outline='red', width=2)
+            self.roi_ids[selected_index] = roi_id
+            roi_label = self.canvas.create_text(new_roi[0], new_roi[1], anchor=tk.NW, text=f"ROI{selected_index + 1}", fill="red", font=("Arial", 10))
+            self.roi_labels[selected_index] = roi_label
+            edit_window.destroy()
+
+        save_button = ttk.Button(edit_window, text="Save", command=on_save)
+        save_button.grid(row=4, column=0, columnspan=2, pady=5)
+
+    def enable_controls(self):
+        self.wide_end_button.config(state=tk.NORMAL)
+        self.middle_button.config(state=tk.NORMAL)
+        self.tele_end_button.config(state=tk.NORMAL)
+        self.autofocus_button.config(state=tk.NORMAL)
+        self.capture_button.config(state=tk.NORMAL)
+        self.clear_button.config(state=tk.NORMAL)
+        for idx, angle in enumerate(self.roi_mtf_labels):
+            for label in angle:
+                label.config(state=tk.NORMAL)
+
+    def disable_controls(self):
+        self.wide_end_button.config(state=tk.DISABLED)
+        self.middle_button.config(state=tk.DISABLED)
+        self.tele_end_button.config(state=tk.DISABLED)
+        self.autofocus_button.config(state=tk.DISABLED)
+        self.capture_button.config(state=tk.DISABLED)
+        self.clear_button.config(state=tk.DISABLED)
+        for idx, angle in enumerate(self.roi_mtf_labels):
+            for label in angle:
+                label.config(state=tk.DISABLED)
+
 
 class SFR:
     def __init__(self, image, image_roi, gamma=0.5, oversampling_rate=4):
@@ -469,13 +542,15 @@ class SFR:
                 break
         return mtf_data, mtf50, 0  # mtf50p not used in this example
 
+
 def main():
     set_start_method("spawn")
     root = tk.Tk()
-    root.title("MTFTestInterface")
+    root.title("MTFTestInterface-v1.0")
     root.geometry("1600x900")
     app = MTFApplication(root)
     root.mainloop()
+
 
 if __name__ == "__main__":
     freeze_support()
