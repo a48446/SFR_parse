@@ -3,9 +3,10 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import tkinter as tk
-from multiprocessing import Process, Queue, set_start_method, freeze_support
+from multiprocessing import Queue, set_start_method, freeze_support
 from tkinter import ttk, filedialog
 
 import cv2
@@ -43,8 +44,9 @@ class MTFApplication:
         self.roi_labels = []
         self.current_roi = None
         self.current_frame = None
-        self.stream_process = None
+        self.stream_thread = None
         self.device_var = tk.StringVar(value="SPD-T5390")
+        self.rtsp_url = None
         self.setup_ui()
         self.disable_controls()
 
@@ -81,15 +83,15 @@ class MTFApplication:
         self.roi_mtf_labels = []
         for idx, angle in enumerate(angles):
             angle_label = ttk.Label(self.master, text=angle)
-            angle_label.grid(column=0, row=9 + idx, padx=5, pady=5, sticky='w')
+            angle_label.grid(column=0, row=10 + idx, padx=5, pady=5, sticky='w')
 
             test_button = ttk.Button(self.master, text="Test", command=lambda idx=idx: self.calculate_mtfs(idx))
-            test_button.grid(column=1, row=9 + idx, padx=5, pady=5, sticky='w')
+            test_button.grid(column=1, row=10 + idx, padx=5, pady=5, sticky='w')
 
             mtf_labels = []
             for roi_idx in range(5):
                 mtf_label = ttk.Label(self.master, text=f'MTF{roi_idx + 1}=')
-                mtf_label.grid(column=1 + roi_idx, row=9 + idx, padx=5, pady=5, sticky='e')
+                mtf_label.grid(column=2 + roi_idx, row=10 + idx, padx=5, pady=5, sticky='e')
                 mtf_labels.append(mtf_label)
 
             self.roi_mtf_labels.append(mtf_labels)
@@ -110,10 +112,10 @@ class MTFApplication:
         self.tele_end_button.grid(row=6, column=0, padx=5, pady=5, sticky='w')
         self.autofocus_button.grid(row=6, column=1, padx=5, pady=5, sticky='w')
         self.capture_button.grid(row=6, column=2, columnspan=2, padx=5, pady=5, sticky='w')
-        self.roi_listbox_label.grid(row=7, column=0, sticky='w')
-        self.roi_listbox.grid(row=7, column=1, padx=5, pady=5, sticky='w')
-        self.clear_button.grid(row=8, column=0, columnspan=2, padx=5, pady=5, sticky='w')
-        self.camera_status_label.grid(row=3, column=2, columnspan=2, padx=5, pady=5, sticky='w')
+        self.roi_listbox_label.grid(row=8, column=0, sticky='w')
+        self.roi_listbox.grid(row=8, column=1, padx=5, pady=5, sticky='w')
+        self.clear_button.grid(row=9, column=0, columnspan=2, padx=5, pady=5, sticky='w')
+        self.camera_status_label.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky='w')
         self.canvas.grid(row=0, column=10, rowspan=20, columnspan=10, padx=10, pady=10, sticky='nsew')
 
     def bind_canvas_events(self):
@@ -140,9 +142,9 @@ class MTFApplication:
         if self.current_roi:
             self.roi_list.append(tuple(self.current_roi))
             self.canvas.delete("current_roi")
-            roi_id = self.canvas.create_rectangle(*self.current_roi, outline='red', width=2)
+            roi_id = self.canvas.create_rectangle(*self.current_roi, outline='red', width=2, tags="roi")
             self.roi_ids.append(roi_id)
-            roi_label = self.canvas.create_text(self.current_roi[0], self.current_roi[1], anchor=tk.NW, text=f"ROI{len(self.roi_list)}", fill="red", font=("Arial", 10))
+            roi_label = self.canvas.create_text(self.current_roi[0], self.current_roi[1], anchor=tk.NW, text=f"ROI{len(self.roi_list)}", fill="red", font=("Arial", 10), tags="roi")
             self.roi_labels.append(roi_label)
             self.update_roi_listbox()
             self.current_roi = None
@@ -157,7 +159,7 @@ class MTFApplication:
             imgtk = ImageTk.PhotoImage(image=frame_resized)
             self.canvas.imgtk = imgtk
             self.canvas.create_image(0, 0, anchor=tk.NW, image=imgtk)
-            self.draw_rois()  # Redraw the ROIs on the new frame
+            self.draw_rois_on_frame()  # Redraw the ROIs on the new frame
         self.master.after(10, self.update_canvas)  # Adjust timing based on frame rate
 
     def update_status(self):
@@ -177,10 +179,7 @@ class MTFApplication:
 
     def clear_rois(self):
         self.roi_list = []
-        for roi_id in self.roi_ids:
-            self.canvas.delete(roi_id)
-        for roi_label in self.roi_labels:
-            self.canvas.delete(roi_label)
+        self.canvas.delete("roi")  # Clear all ROI drawings from the canvas
         self.roi_ids = []
         self.roi_labels = []
         self.update_roi_listbox()
@@ -194,7 +193,7 @@ class MTFApplication:
             self.status_label.config(text="Incomplete credentials", foreground="red")
             return
 
-        rtsp_url = f"rtsp://{username}:{password}@{ip}/stream1"
+        self.rtsp_url = f"rtsp://{username}:{password}@{ip}/stream1"
         self.status_label.config(text="Connecting...", foreground="orange")
 
         try:
@@ -206,18 +205,19 @@ class MTFApplication:
                 return
 
             self.status_label.config(text="Connected", foreground="green")
-            self.start_rtsp_stream(rtsp_url)
+            self.start_rtsp_stream(self.rtsp_url)
             self.enable_controls()
 
         except subprocess.TimeoutExpired:
             self.status_label.config(text="Connection timed out", foreground="red")
 
     def start_rtsp_stream(self, rtsp_url):
-        if self.stream_process and self.stream_process.is_alive():
-            self.stream_process.terminate()
+        if self.stream_thread and self.stream_thread.is_alive():
+            self.stream_thread.join()
 
-        self.stream_process = Process(target=stream, args=(rtsp_url, self.frame_queue))
-        self.stream_process.start()
+        self.stream_thread = threading.Thread(target=stream, args=(rtsp_url, self.frame_queue))
+        self.stream_thread.daemon = True  # This ensures the thread exits when the main program exits
+        self.stream_thread.start()
         self.master.after(0, self.update_canvas)
         self.master.after(0, self.update_status)
 
@@ -264,6 +264,7 @@ class MTFApplication:
             return None
 
     def on_wide_end(self):
+        self.clear_rois()
         ip = self.ip_entry.get()
         username = self.username_entry.get()
         password = self.password_entry.get()
@@ -292,6 +293,7 @@ class MTFApplication:
                 print("Camera is busy. Please wait until it is idle.")
 
     def on_middle(self):
+        self.clear_rois()
         ip = self.ip_entry.get()
         username = self.username_entry.get()
         password = self.password_entry.get()
@@ -335,6 +337,7 @@ class MTFApplication:
             print("Camera is busy. Please wait until it is idle.")
 
     def on_tele_end(self):
+        self.clear_rois()
         ip = self.ip_entry.get()
         username = self.username_entry.get()
         password = self.password_entry.get()
@@ -373,6 +376,7 @@ class MTFApplication:
                 print("Camera is busy. Please wait until it is idle.")
 
     def on_autofocus(self):
+        self.clear_rois()
         ip = self.ip_entry.get()
         username = self.username_entry.get()
         password = self.password_entry.get()
@@ -392,10 +396,10 @@ class MTFApplication:
                 mtf50 = results['MTF50']
                 self.roi_mtf_labels[label_idx][idx].config(text=f'MTF{idx + 1}={mtf50:.2f}')
 
-    def draw_rois(self):
+    def draw_rois_on_frame(self):
         for idx, roi in enumerate(self.roi_list):
-            self.canvas.create_rectangle(*roi, outline='red', width=2)
-            self.canvas.create_text(roi[0], roi[1], anchor=tk.NW, text=f"ROI{idx + 1}", fill="red", font=("Arial", 10))
+            self.canvas.create_rectangle(*roi, outline='red', width=2, tags="roi")
+            self.canvas.create_text(roi[0], roi[1], anchor=tk.NW, text=f"ROI{idx + 1}", fill="red", font=("Arial", 10), tags="roi")
 
     def edit_roi(self, event):
         selected_index = self.roi_listbox.curselection()
@@ -421,12 +425,8 @@ class MTFApplication:
             new_roi = tuple(int(entry.get()) for entry in entries)
             self.roi_list[selected_index] = new_roi
             self.update_roi_listbox()
-            self.canvas.delete(self.roi_ids[selected_index])
-            self.canvas.delete(self.roi_labels[selected_index])
-            roi_id = self.canvas.create_rectangle(*new_roi, outline='red', width=2)
-            self.roi_ids[selected_index] = roi_id
-            roi_label = self.canvas.create_text(new_roi[0], new_roi[1], anchor=tk.NW, text=f"ROI{selected_index + 1}", fill="red", font=("Arial", 10))
-            self.roi_labels[selected_index] = roi_label
+            self.canvas.delete("roi")
+            self.draw_rois_on_frame()
             edit_window.destroy()
 
         save_button = ttk.Button(edit_window, text="Save", command=on_save)
@@ -546,7 +546,7 @@ class SFR:
 def main():
     set_start_method("spawn")
     root = tk.Tk()
-    root.title("MTFTestInterface-v1.0")
+    root.title("MTFTestInterface-v1.1")
     root.geometry("1600x900")
     app = MTFApplication(root)
     root.mainloop()
