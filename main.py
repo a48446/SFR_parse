@@ -8,7 +8,6 @@ import time
 import tkinter as tk
 from multiprocessing import Queue, set_start_method, freeze_support
 from tkinter import ttk, filedialog
-
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
@@ -59,39 +58,76 @@ class MTFApplication:
         self.ip_label = ttk.Label(self.master, text="IP:")
         self.ip_entry = ttk.Entry(self.master)
         self.device_label = ttk.Label(self.master, text="Device:")
-        self.device_combobox = ttk.Combobox(self.master, textvariable=self.device_var)
-        self.device_combobox['values'] = ("SPD-T5390", "SPD-T5391", "SPD-T5373", "SPD-T5375", "other")
+        self.device_combobox = ttk.Combobox(
+            self.master, textvariable=self.device_var)
+        self.device_combobox['values'] = (
+            "SPD-T5390", "SPD-T5391", "SPD-T5373", "SPD-T5375", "other")
         self.username_label = ttk.Label(self.master, text="Username:")
         self.username_entry = ttk.Entry(self.master)
         self.password_label = ttk.Label(self.master, text="Password:")
         self.password_entry = ttk.Entry(self.master, show="*")
-        self.start_button = ttk.Button(self.master, text="Start", command=self.on_start)
+        self.start_button = ttk.Button(
+            self.master, text="Start", command=self.on_start)
         self.status_label = ttk.Label(self.master, text="Not Connected")
         self.canvas = tk.Canvas(self.master, width=800, height=600, bg='gray')
         self.roi_listbox_label = ttk.Label(self.master, text="Selected ROIs:")
         self.roi_listbox = tk.Listbox(self.master, height=5)
-        self.clear_button = ttk.Button(self.master, text="Clear ROIs", command=self.clear_rois)
-        self.capture_button = ttk.Button(self.master, text="Capture Screenshot", command=self.capture_screenshot)
+        self.clear_button = ttk.Button(
+            self.master,
+            text="Clear ROIs",
+            command=self.clear_rois)
+        self.capture_button = ttk.Button(
+            self.master,
+            text="Capture Screenshot",
+            command=self.capture_screenshot)
 
-        self.wide_end_button = ttk.Button(self.master, text="Wide end", command=self.on_wide_end)
-        self.middle_button = ttk.Button(self.master, text="Middle", command=self.on_middle)
-        self.tele_end_button = ttk.Button(self.master, text="Tele end", command=self.on_tele_end)
-        self.autofocus_button = ttk.Button(self.master, text="Auto focus", command=self.on_autofocus)
-        self.camera_status_label = ttk.Label(self.master, text="Camera status: unknown")
+        self.wide_end_button = ttk.Button(
+            self.master, text="Wide end", command=self.on_wide_end)
+        self.middle_button = ttk.Button(
+            self.master, text="Middle", command=self.on_middle)
+        self.tele_end_button = ttk.Button(
+            self.master, text="Tele end", command=self.on_tele_end)
+        self.autofocus_button = ttk.Button(
+            self.master, text="Auto focus", command=self.on_autofocus)
+        self.camera_status_label = ttk.Label(
+            self.master, text="Camera status: unknown")
 
-        angles = ['0°', '45° - Face 1', '45° - Face 2', '45° - Face 3', '45° - Face 4']
+        angles = [
+            '0°',
+            '45° - Face 1',
+            '45° - Face 2',
+            '45° - Face 3',
+            '45° - Face 4']
         self.roi_mtf_labels = []
         for idx, angle in enumerate(angles):
             angle_label = ttk.Label(self.master, text=angle)
-            angle_label.grid(column=0, row=10 + idx, padx=5, pady=5, sticky='w')
+            angle_label.grid(
+                column=0,
+                row=10 + idx,
+                padx=5,
+                pady=5,
+                sticky='w')
 
-            test_button = ttk.Button(self.master, text="Test", command=lambda idx=idx: self.calculate_mtfs(idx))
-            test_button.grid(column=1, row=10 + idx, padx=5, pady=5, sticky='w')
+            test_button = ttk.Button(
+                self.master,
+                text="Test",
+                command=lambda idx=idx: self.calculate_mtfs(idx))
+            test_button.grid(
+                column=1,
+                row=10 + idx,
+                padx=5,
+                pady=5,
+                sticky='w')
 
             mtf_labels = []
             for roi_idx in range(5):
                 mtf_label = ttk.Label(self.master, text=f'MTF{roi_idx + 1}=')
-                mtf_label.grid(column=2 + roi_idx, row=10 + idx, padx=5, pady=5, sticky='e')
+                mtf_label.grid(
+                    column=2 + roi_idx,
+                    row=10 + idx,
+                    padx=5,
+                    pady=5,
+                    sticky='e')
                 mtf_labels.append(mtf_label)
 
             self.roi_mtf_labels.append(mtf_labels)
@@ -111,12 +147,37 @@ class MTFApplication:
         self.middle_button.grid(row=5, column=1, padx=5, pady=5, sticky='w')
         self.tele_end_button.grid(row=6, column=0, padx=5, pady=5, sticky='w')
         self.autofocus_button.grid(row=6, column=1, padx=5, pady=5, sticky='w')
-        self.capture_button.grid(row=6, column=2, columnspan=2, padx=5, pady=5, sticky='w')
+        self.capture_button.grid(
+            row=6,
+            column=2,
+            columnspan=2,
+            padx=5,
+            pady=5,
+            sticky='w')
         self.roi_listbox_label.grid(row=8, column=0, sticky='w')
         self.roi_listbox.grid(row=8, column=1, padx=5, pady=5, sticky='w')
-        self.clear_button.grid(row=9, column=0, columnspan=2, padx=5, pady=5, sticky='w')
-        self.camera_status_label.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky='w')
-        self.canvas.grid(row=0, column=10, rowspan=20, columnspan=10, padx=10, pady=10, sticky='nsew')
+        self.clear_button.grid(
+            row=9,
+            column=0,
+            columnspan=2,
+            padx=5,
+            pady=5,
+            sticky='w')
+        self.camera_status_label.grid(
+            row=7,
+            column=0,
+            columnspan=2,
+            padx=5,
+            pady=5,
+            sticky='w')
+        self.canvas.grid(
+            row=0,
+            column=10,
+            rowspan=20,
+            columnspan=10,
+            padx=10,
+            pady=10,
+            sticky='nsew')
 
     def bind_canvas_events(self):
         self.canvas.bind("<Button-1>", self.on_canvas_click)
@@ -127,9 +188,18 @@ class MTFApplication:
     def on_canvas_click(self, event):
         if len(self.roi_list) < 5:
             self.current_roi = [event.x, event.y, event.x, event.y]
-            roi_id = self.canvas.create_rectangle(*self.current_roi, outline='red', width=2, tags="current_roi")
+            roi_id = self.canvas.create_rectangle(
+                *self.current_roi, outline='red', width=2, tags="current_roi")
             self.roi_ids.append(roi_id)
-            roi_label = self.canvas.create_text(event.x, event.y, anchor=tk.NW, text=f"ROI{len(self.roi_list) + 1}", fill="red", font=("Arial", 10))
+            roi_label = self.canvas.create_text(
+                event.x,
+                event.y,
+                anchor=tk.NW,
+                text=f"ROI{len(self.roi_list) + 1}",
+                fill="red",
+                font=(
+                    "Arial",
+                    10))
             self.roi_labels.append(roi_label)
 
     def on_canvas_drag(self, event):
@@ -142,9 +212,19 @@ class MTFApplication:
         if self.current_roi:
             self.roi_list.append(tuple(self.current_roi))
             self.canvas.delete("current_roi")
-            roi_id = self.canvas.create_rectangle(*self.current_roi, outline='red', width=2, tags="roi")
+            roi_id = self.canvas.create_rectangle(
+                *self.current_roi, outline='red', width=2, tags="roi")
             self.roi_ids.append(roi_id)
-            roi_label = self.canvas.create_text(self.current_roi[0], self.current_roi[1], anchor=tk.NW, text=f"ROI{len(self.roi_list)}", fill="red", font=("Arial", 10), tags="roi")
+            roi_label = self.canvas.create_text(
+                self.current_roi[0],
+                self.current_roi[1],
+                anchor=tk.NW,
+                text=f"ROI{len(self.roi_list)}",
+                fill="red",
+                font=(
+                    "Arial",
+                    10),
+                tags="roi")
             self.roi_labels.append(roi_label)
             self.update_roi_listbox()
             self.current_roi = None
@@ -160,7 +240,8 @@ class MTFApplication:
             self.canvas.imgtk = imgtk
             self.canvas.create_image(0, 0, anchor=tk.NW, image=imgtk)
             self.draw_rois_on_frame()  # Redraw the ROIs on the new frame
-        self.master.after(10, self.update_canvas)  # Adjust timing based on frame rate
+        # Adjust timing based on frame rate
+        self.master.after(10, self.update_canvas)
 
     def update_status(self):
         ip = self.ip_entry.get()
@@ -169,7 +250,8 @@ class MTFApplication:
         if ip and username and password:
             status = self.monitor_status(ip, username, password)
             if status:
-                self.camera_status_label.config(text=f"Camera status: {status}")
+                self.camera_status_label.config(
+                    text=f"Camera status: {status}")
         self.master.after(1000, self.update_status)
 
     def update_roi_listbox(self):
@@ -190,18 +272,33 @@ class MTFApplication:
         password = self.password_entry.get()
 
         if not ip or not username or not password:
-            self.status_label.config(text="Incomplete credentials", foreground="red")
+            self.status_label.config(
+                text="Incomplete credentials",
+                foreground="red")
             return
 
         self.rtsp_url = f"rtsp://{username}:{password}@{ip}/stream1"
         self.status_label.config(text="Connecting...", foreground="orange")
 
         try:
-            validate_command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/get?motorized_lens.info.ctrl_status']
-            validate_result = subprocess.run(validate_command, capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
+            validate_command = [
+                'curl',
+                '--cookie',
+                'ipcamera=test',
+                '--digest',
+                '-u',
+                f'{username}:{password}',
+                f'http://{ip}/cgi-bin/get?motorized_lens.info.ctrl_status']
+            validate_result = subprocess.run(
+                validate_command,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW)
 
             if validate_result.returncode != 0 or "Unauthorized" in validate_result.stdout:
-                self.status_label.config(text="Invalid credentials", foreground="red")
+                self.status_label.config(
+                    text="Invalid credentials", foreground="red")
                 return
 
             self.status_label.config(text="Connected", foreground="green")
@@ -209,14 +306,17 @@ class MTFApplication:
             self.enable_controls()
 
         except subprocess.TimeoutExpired:
-            self.status_label.config(text="Connection timed out", foreground="red")
+            self.status_label.config(
+                text="Connection timed out", foreground="red")
 
     def start_rtsp_stream(self, rtsp_url):
         if self.stream_thread and self.stream_thread.is_alive():
             self.stream_thread.join()
 
-        self.stream_thread = threading.Thread(target=stream, args=(rtsp_url, self.frame_queue))
-        self.stream_thread.daemon = True  # This ensures the thread exits when the main program exits
+        self.stream_thread = threading.Thread(
+            target=stream, args=(rtsp_url, self.frame_queue))
+        # This ensures the thread exits when the main program exits
+        self.stream_thread.daemon = True
         self.stream_thread.start()
         self.master.after(0, self.update_canvas)
         self.master.after(0, self.update_status)
@@ -241,10 +341,23 @@ class MTFApplication:
                 print("Screenshot not saved.")
 
     def get_max_optical_zoom(self, ip, username, password):
-        get_max = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/get?motorized_lens.info.max_optical_zoom']
-        get_max_result = subprocess.run(get_max, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        get_max = [
+            'curl',
+            '--cookie',
+            'ipcamera=test',
+            '--digest',
+            '-u',
+            f'{username}:{password}',
+            f'http://{ip}/cgi-bin/get?motorized_lens.info.max_optical_zoom']
+        get_max_result = subprocess.run(
+            get_max,
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW)
 
-        match = re.search(r'"motorized_lens\.info\.max_optical_zoom":\["ok","(\d+\.\d+)"\]', get_max_result.stdout)
+        match = re.search(
+            r'"motorized_lens\.info\.max_optical_zoom":\["ok","(\d+\.\d+)"\]',
+            get_max_result.stdout)
         if match:
             max_optical_zoom = match.group(1)
             return max_optical_zoom
@@ -253,9 +366,22 @@ class MTFApplication:
             return None
 
     def monitor_status(self, ip, username, password):
-        get_status = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/get?motorized_lens.info.ctrl_status']
-        result = subprocess.run(get_status, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-        match = re.search(r'"motorized_lens\.info\.ctrl_status":\["ok","(\w+)"\]', result.stdout)
+        get_status = [
+            'curl',
+            '--cookie',
+            'ipcamera=test',
+            '--digest',
+            '-u',
+            f'{username}:{password}',
+            f'http://{ip}/cgi-bin/get?motorized_lens.info.ctrl_status']
+        result = subprocess.run(
+            get_status,
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+        match = re.search(
+            r'"motorized_lens\.info\.ctrl_status":\["ok","(\w+)"\]',
+            result.stdout)
         if match:
             ctrl_status = match.group(1)
             return ctrl_status
@@ -272,10 +398,21 @@ class MTFApplication:
         device_type = self.device_var.get()
         if device_type[0:3] == "SPD":
             device_list = device_type.split("-")[0:4][1]
-            command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=100']
+            command = [
+                'curl',
+                '--cookie',
+                'ipcamera=test',
+                '--digest',
+                '-u',
+                f'{username}:{password}',
+                f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=100']
             if status == "idle" or status == "done":
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
                     print(result.stdout)
                 except Exception as e:
                     print(f"Error executing curl command: {e}")
@@ -283,9 +420,20 @@ class MTFApplication:
                 print("Camera is busy. Please wait until it is idle.")
         else:
             if status == "idle" or status == "done":
-                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute=1']
+                command = [
+                    'curl',
+                    '--cookie',
+                    'ipcamera=test',
+                    '--digest',
+                    '-u',
+                    f'{username}:{password}',
+                    f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute=1']
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
                     print(result.stdout)
                 except Exception as e:
                     print(f"Error executing curl command: {e}")
@@ -314,11 +462,23 @@ class MTFApplication:
                 max_optical_zoom = 4200
 
             if status == "idle" or status == "done":
-                middle_optical_zoom = (float(max_optical_zoom) + min_optical_zoom) / 2
+                middle_optical_zoom = (
+                    float(max_optical_zoom) + min_optical_zoom) / 2
                 print(middle_optical_zoom)
-                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute={middle_optical_zoom}']
+                command = [
+                    'curl',
+                    '--cookie',
+                    'ipcamera=test',
+                    '--digest',
+                    '-u',
+                    f'{username}:{password}',
+                    f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute={middle_optical_zoom}']
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
                     print(result.stdout)
                 except Exception as e:
                     print(f"Error executing curl command: {e}")
@@ -326,10 +486,22 @@ class MTFApplication:
                 print("Camera is busy. Please wait until it is idle.")
         if status == "idle" or status == "done":
             if max_optical_zoom:
-                middle_optical_zoom = (float(max_optical_zoom) + min_optical_zoom) / 2
-                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={middle_optical_zoom}']
+                middle_optical_zoom = (
+                    float(max_optical_zoom) + min_optical_zoom) / 2
+                command = [
+                    'curl',
+                    '--cookie',
+                    'ipcamera=test',
+                    '--digest',
+                    '-u',
+                    f'{username}:{password}',
+                    f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={middle_optical_zoom}']
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
                     print(result.stdout)
                 except Exception as e:
                     print(f"Error executing curl command: {e}")
@@ -346,29 +518,73 @@ class MTFApplication:
         if device_type[0:3] == "SPD":
             device_list = device_type.split("-")[0:4][1]
             if device_list == "T5390":
-                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=3000']
+                command = [
+                    'curl',
+                    '--cookie',
+                    'ipcamera=test',
+                    '--digest',
+                    '-u',
+                    f'{username}:{password}',
+                    f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=3000']
             if device_list == "T5391":
-                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=2200']
+                command = [
+                    'curl',
+                    '--cookie',
+                    'ipcamera=test',
+                    '--digest',
+                    '-u',
+                    f'{username}:{password}',
+                    f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=2200']
             if device_list == "T5373":
-                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=3000']
+                command = [
+                    'curl',
+                    '--cookie',
+                    'ipcamera=test',
+                    '--digest',
+                    '-u',
+                    f'{username}:{password}',
+                    f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=3000']
             if device_list == "T5375":
-                command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=4200']
+                command = [
+                    'curl',
+                    '--cookie',
+                    'ipcamera=test',
+                    '--digest',
+                    '-u',
+                    f'{username}:{password}',
+                    f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute=4200']
 
             if status == "idle" or status == "done":
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
                     print(result.stdout)
                 except Exception as e:
                     print(f"Error executing curl command: {e}")
             else:
                 print("Camera is busy. Please wait until it is idle.")
         else:
-            max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
-            command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={max_optical_zoom}']
+            max_optical_zoom = self.get_max_optical_zoom(
+                ip, username, password)
+            command = [
+                'curl',
+                '--cookie',
+                'ipcamera=test',
+                '--digest',
+                '-u',
+                f'{username}:{password}',
+                f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={max_optical_zoom}']
 
             if status == "idle" or status == "done":
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
                     print(result.stdout)
                 except Exception as e:
                     print(f"Error executing curl command: {e}")
@@ -376,13 +592,34 @@ class MTFApplication:
                 print("Camera is busy. Please wait until it is idle.")
 
     def on_autofocus(self):
-        self.clear_rois()
         ip = self.ip_entry.get()
         username = self.username_entry.get()
         password = self.password_entry.get()
-        command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.focus.move.one_push=1']
+        device_type = self.device_var.get()
+        if device_type[0:3] == "SPD":
+            command = [
+                'curl',
+                '--cookie',
+                'ipcamera=test',
+                '--digest',
+                '-u',
+                f'{username}:{password}',
+                f'http://{ip}/cgi-bin/set?ptz.focus.manual.move.one_push=1']
+        else:
+            command = [
+                'curl',
+                '--cookie',
+                'ipcamera=test',
+                '--digest',
+                '-u',
+                f'{username}:{password}',
+                f'http://{ip}/cgi-bin/set?motorized_lens.focus.move.one_push=1']
         try:
-            result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW)
             print(result.stdout)
         except Exception as e:
             print(f"Error executing curl command: {e}")
@@ -394,12 +631,23 @@ class MTFApplication:
                 sfr = SFR(frame_image, roi)
                 results = sfr.calculate()
                 mtf50 = results['MTF50']
-                self.roi_mtf_labels[label_idx][idx].config(text=f'MTF{idx + 1}={mtf50:.2f}')
+                self.roi_mtf_labels[label_idx][idx].config(
+                    text=f'MTF{idx + 1}={mtf50:.2f}')
 
     def draw_rois_on_frame(self):
         for idx, roi in enumerate(self.roi_list):
-            self.canvas.create_rectangle(*roi, outline='red', width=2, tags="roi")
-            self.canvas.create_text(roi[0], roi[1], anchor=tk.NW, text=f"ROI{idx + 1}", fill="red", font=("Arial", 10), tags="roi")
+            self.canvas.create_rectangle(
+                *roi, outline='red', width=2, tags="roi")
+            self.canvas.create_text(
+                roi[0],
+                roi[1],
+                anchor=tk.NW,
+                text=f"ROI{idx + 1}",
+                fill="red",
+                font=(
+                    "Arial",
+                    10),
+                tags="roi")
 
     def edit_roi(self, event):
         selected_index = self.roi_listbox.curselection()
@@ -474,7 +722,8 @@ class SFR:
         image = self.image.crop(self.image_roi).convert('L')
         image = image.transpose(Image.Transpose.ROTATE_90)
         pixels = np.array(image)
-        esf, slope, intercept = self._get_esf_data(pixels, self.oversampling_rate)
+        esf, slope, intercept = self._get_esf_data(
+            pixels, self.oversampling_rate)
         lsf = self._get_lsf_data(esf)
         sfr = self._get_sfr_data(lsf)
         mtf, mtf50, mtf50p = self._get_mtf_data(sfr, self.oversampling_rate)
@@ -494,7 +743,8 @@ class SFR:
                 last_px = px
                 idx += 1
             edge_idx_per_line.append(max_idx)
-        slope, intercept, _, _, _ = stats.linregress(list(range(len(edge_idx_per_line))), edge_idx_per_line)
+        slope, intercept, _, _, _ = stats.linregress(
+            list(range(len(edge_idx_per_line))), edge_idx_per_line)
         inspection_width = 1
         while inspection_width <= len(pixel_array[0]):
             inspection_width *= 2
@@ -505,8 +755,10 @@ class SFR:
         x = y = 0
         for line in pixel_array:
             for px in line:
-                if abs(x - (y * slope + intercept)) <= half_inspection_width + 1 / oversampling_rate:
-                    idx = int((x - (y * slope + intercept) + half_inspection_width) * oversampling_rate + 1)
+                if abs(x - (y * slope + intercept)
+                       ) <= half_inspection_width + 1 / oversampling_rate:
+                    idx = int((x - (y * slope + intercept) +
+                              half_inspection_width) * oversampling_rate + 1)
                     esf_sum[idx] += px
                     hit_count[idx] += 1
                 x += 1
@@ -536,9 +788,11 @@ class SFR:
             if freq == 0:
                 mtf_data[idx] = sfr_data[idx]
             else:
-                mtf_data[idx] = sfr_data[idx] * (np.pi * freq * 2 / oversampling_rate) / np.sin(np.pi * freq * 2 / oversampling_rate)
+                mtf_data[idx] = sfr_data[idx] * (np.pi * freq * 2 / oversampling_rate) / np.sin(
+                    np.pi * freq * 2 / oversampling_rate)
             if idx > 0 and mtf_data[idx] < 0.5 and mtf_data[idx - 1] >= 0.5:
-                mtf50 = (idx - 1 + (0.5 - mtf_data[idx]) / (mtf_data[idx - 1] - mtf_data[idx])) / (len(mtf_data) - 1)
+                mtf50 = (idx - 1 + (0.5 - mtf_data[idx]) / (
+                    mtf_data[idx - 1] - mtf_data[idx])) / (len(mtf_data) - 1)
                 break
         return mtf_data, mtf50, 0  # mtf50p not used in this example
 
@@ -546,7 +800,7 @@ class SFR:
 def main():
     set_start_method("spawn")
     root = tk.Tk()
-    root.title("MTFTestInterface-v1.1")
+    root.title("MTFTestInterface-v1.2")
     root.geometry("1600x900")
     app = MTFApplication(root)
     root.mainloop()
