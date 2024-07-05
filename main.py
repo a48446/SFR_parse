@@ -1,18 +1,18 @@
-import datetime
 import os
 import re
-import subprocess
-import sys
-import threading
-import time
-import tkinter as tk
-from multiprocessing import Queue, set_start_method, freeze_support
-from tkinter import ttk, filedialog
 import cv2
+import sys
+import time
+import threading
+import datetime
+import subprocess
 import numpy as np
+import tkinter as tk
 from PIL import Image, ImageTk
 from scipy import stats
 from scipy.fftpack import fft
+from tkinter import ttk, filedialog
+from multiprocessing import Queue, set_start_method, freeze_support
 
 
 def stream(rtsp_url, frame_queue):
