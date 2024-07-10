@@ -22,7 +22,7 @@ class MTFApplication:
         self.roi_ids = []
         self.roi_labels = []
         self.current_roi = None
-        self.device_var = tk.StringVar(value="SPD-T5390")
+        self.device_var = tk.StringVar(value="SPD-other")
         self.rtsp_url = None
         self.current_frame = None  # Add current_frame to store the latest frame
         self.setup_ui()
@@ -38,7 +38,7 @@ class MTFApplication:
         self.ip_entry = ttk.Entry(self.master)
         self.device_label = ttk.Label(self.master, text="Device:")
         self.device_combobox = ttk.Combobox(self.master, textvariable=self.device_var)
-        self.device_combobox['values'] = ("SPD-T5390", "SPD-T5391", "SPD-T5373", "SPD-T5375", "other")
+        self.device_combobox['values'] = ("SPD-other","SPD-T5390", "SPD-T5391", "SPD-T5373", "SPD-T5375", "other")
         self.username_label = ttk.Label(self.master, text="Username:")
         self.username_entry = ttk.Entry(self.master)
         self.password_label = ttk.Label(self.master, text="Password:")
@@ -350,6 +350,8 @@ class MTFApplication:
                 max_optical_zoom = 3000
             if device_list == "T5375":
                 max_optical_zoom = 4200
+            if device_list == "other":
+                max_optical_zoom = 420
 
             if status == "idle" or status == "done":
                 middle_optical_zoom = (
@@ -415,8 +417,8 @@ class MTFApplication:
                     zoom_value = 3000
                 elif device_type == "SPD-T5375":
                     zoom_value = 4200
-                else:
-                    zoom_value = 3000
+                elif device_type == "SPD-other":
+                    zoom_value = 420
                 command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute={zoom_value}']
                 try:
                     result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
