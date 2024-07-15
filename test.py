@@ -20,18 +20,17 @@ class MTFApplication:
     def __init__(self, master):
         self.master = master
         self.roi_list = []
-        self.roi_ids = []
-        self.roi_labels = []
         self.current_roi = None
         self.device_var = tk.StringVar(value="SPD-other")
         self.rtsp_url = None
         self.current_frame = None
         self.stream_resolution = None
         self.test_counters = [0] * 5
-        self.mtf_threshold = 0.5
+        self.mtf_threshold_center = 0.5
+        self.mtf_threshold_surround = 0.5
+        self.mtf_delta_threshold = 0.1
         self.mtf_results = [[] for _ in range(5)]
         self.engineer_mode = False
-
         self.setup_ui()
         self.disable_controls()
 
@@ -59,9 +58,18 @@ class MTFApplication:
         self.roi_listbox_label = ttk.Label(self.master, text="Selected ROIs:")
         self.roi_listbox = tk.Listbox(self.master, height=5)
         self.clear_button = ttk.Button(self.master, text="Clear ROIs", command=self.clear_rois)
-        self.mtf_threshold_entry = ttk.Entry(self.master)
-        self.mtf_threshold_entry.insert(0, str(self.mtf_threshold))
-        self.mtf_threshold_entry.config(state='disabled')
+        self.threshold_label_center = ttk.Label(self.master, text="Center Threshold:")
+        self.threshold_entry_center = ttk.Entry(self.master)
+        self.threshold_entry_center.insert(0, str(self.mtf_threshold_center))
+        self.threshold_entry_center.config(state='disabled')
+        self.threshold_label_surround = ttk.Label(self.master, text="Surround Threshold:")
+        self.threshold_entry_surround = ttk.Entry(self.master)
+        self.threshold_entry_surround.insert(0, str(self.mtf_threshold_surround))
+        self.threshold_entry_surround.config(state='disabled')
+        self.threshold_label_delta = ttk.Label(self.master, text="Delta Threshold:")
+        self.threshold_entry_delta = ttk.Entry(self.master)
+        self.threshold_entry_delta.insert(0, str(self.mtf_delta_threshold))
+        self.threshold_entry_delta.config(state='disabled')
         self.capture_button = ttk.Button(self.master, text="Capture Screenshot", command=self.capture_screenshot)
         self.export_button = ttk.Button(self.master, text="Export Excel", command=self.export_to_excel)
         self.wide_end_button = ttk.Button(self.master, text="Wide end", command=self.on_wide_end)
@@ -73,6 +81,7 @@ class MTFApplication:
         self.roi_mtf_labels = []
         self.roi_status_labels = []
         self.test_counter_labels = []
+        roi_labels = ["MTF_LL", "MTF_LR", "MTF_UL", "MTF_UR", "MTF_C"]
         for idx, angle in enumerate(angles):
             angle_label = ttk.Label(self.master, text=angle)
             angle_label.grid(column=0, row=12 + idx, padx=5, pady=5, sticky='w')
@@ -84,7 +93,7 @@ class MTFApplication:
             mtf_labels = []
             status_label = ttk.Label(self.master, text="Status:")
             for roi_idx in range(5):
-                mtf_label = ttk.Label(self.master, text=f'MTF{roi_idx + 1}=')
+                mtf_label = ttk.Label(self.master, text=f'{roi_labels[roi_idx]}=')
                 mtf_label.grid(column=3 + roi_idx * 2, row=12 + idx, padx=5, pady=5, sticky='e')
                 mtf_labels.append(mtf_label)
             status_label.grid(column=13, row=12 + idx, padx=5, pady=5, sticky='w')
@@ -114,8 +123,13 @@ class MTFApplication:
         self.roi_listbox_label.grid(row=10, column=0, sticky='w')
         self.roi_listbox.grid(row=10, column=1, padx=5, pady=5, sticky='w')
         self.clear_button.grid(row=11, column=0, sticky='w')
-        self.mtf_threshold_entry.grid(row=11, column=1, padx=5, pady=5, sticky='w')
-        self.export_button.grid(row=11, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_label_center.grid(row=9, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_center.grid(row=9, column=3, padx=5, pady=5, sticky='w')
+        self.threshold_label_surround.grid(row=10, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_surround.grid(row=10, column=3, padx=5, pady=5, sticky='w')
+        self.threshold_label_delta.grid(row=11, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_delta.grid(row=11, column=3, padx=5, pady=5, sticky='w')
+        self.export_button.grid(row=17, column=13, padx=5, pady=5, sticky='w')  # Move Export Excel button
         self.camera_status_label.grid(row=9, column=0, columnspan=2, padx=5, pady=5, sticky='w')
         self.roi_listbox.bind("<Double-1>", self.edit_roi)
 
@@ -253,7 +267,8 @@ class MTFApplication:
             self.current_roi[3] = int(y * scale_y)
         elif event == cv2.EVENT_LBUTTONUP:
             if self.current_roi is not None:
-                roi_label = f"ROI{len(self.roi_list) + 1}"
+                roi_positions = ["LL", "LR", "UL", "UR", "C"]  # Define labels for each ROI
+                roi_label = f"ROI_{roi_positions[len(self.roi_list)]}"
                 self.roi_list.append((tuple(self.current_roi), roi_label))
                 self.update_roi_listbox()
                 self.current_roi = None
@@ -485,6 +500,9 @@ class MTFApplication:
         password = self.password_entry.get()
         device_type = self.device_var.get()
         if device_type[0:3] == "SPD":
+            first_command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.focus.mode=manual']
+            result = subprocess.run(first_command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            print(result.stdout)
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.focus.manual.move.one_push=1']
         else:
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.focus.move.one_push=1']
@@ -500,14 +518,25 @@ class MTFApplication:
             self.test_counter_labels[label_idx].config(text=f"Count: {self.test_counters[label_idx]}")
             frame_image = Image.fromarray(self.current_frame)
             mtf_values = []
+            min_mtf = float('inf')
+            max_mtf = 0
             for idx, (roi, label) in enumerate(self.roi_list):
                 sfr = SFR(frame_image, roi)
                 results = sfr.calculate()
                 mtf50 = results['MTF50']
                 mtf_values.append(mtf50)
-                self.roi_mtf_labels[label_idx][idx].config(text=f'MTF{idx + 1}={mtf50:.2f}')
+                if label.endswith("C"):
+                    center_pass = mtf50 >= self.mtf_threshold_center
+                else:
+                    if mtf50 < min_mtf:
+                        min_mtf = mtf50
+                    if mtf50 > max_mtf:
+                        max_mtf = mtf50
+                color = "red" if mtf50 < self.mtf_threshold_surround else "black"
+                self.roi_mtf_labels[label_idx][idx].config(text=f'{label.split("_")[1]}={mtf50:.2f}', foreground=color)
             self.mtf_results[label_idx] = mtf_values
-            overall_status = "Pass" if all(mtf >= self.mtf_threshold for mtf in mtf_values) else "Fail"
+            delta_pass = (max_mtf - min_mtf) <= self.mtf_delta_threshold
+            overall_status = "Pass" if center_pass and all(m >= self.mtf_threshold_surround for m in mtf_values) and delta_pass else "Fail"
             self.roi_status_labels[label_idx].config(text=overall_status, foreground=("green" if overall_status == "Pass" else "red"))
 
     def enable_controls(self):
@@ -529,7 +558,6 @@ class MTFApplication:
         self.autofocus_button.config(state=tk.DISABLED)
         self.capture_button.config(state=tk.DISABLED)
         self.clear_button.config(state=tk.DISABLED)
-        self.export_button.config(state=tk.DISABLED)
         for idx, angle in enumerate(self.roi_mtf_labels):
             for label in angle:
                 label.config(state=tk.DISABLED)
@@ -541,13 +569,17 @@ class MTFApplication:
                 self.engineer_mode = True
                 self.engineer_mode_button.config(text="Engineer Mode: ON")
                 self.engineer_mode_label.config(text="ON", foreground="green")
-                self.mtf_threshold_entry.config(state='normal')
+                self.threshold_entry_center.config(state='normal')
+                self.threshold_entry_surround.config(state='normal')
+                self.threshold_entry_delta.config(state='normal')
                 print("Entered Engineer Mode")
             else:
                 self.engineer_mode = False
                 self.engineer_mode_button.config(text="Engineer Mode: OFF")
                 self.engineer_mode_label.config(text="OFF", foreground="red")
-                self.mtf_threshold_entry.config(state='disabled')
+                self.threshold_entry_center.config(state='disabled')
+                self.threshold_entry_surround.config(state='disabled')
+                self.threshold_entry_delta.config(state='disabled')
                 print("Exited Engineer Mode")
         else:
             print("Incorrect Engineer Credentials")
