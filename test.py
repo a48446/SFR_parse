@@ -44,7 +44,6 @@ class MTFApplication:
         self.apply_threshold_profile(self.current_profile.get())
         self.disable_controls()
 
-        # 在關閉視窗時保存閥值
         self.master.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def load_thresholds(self):
@@ -142,30 +141,30 @@ class MTFApplication:
         self.username_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
         self.password_label.grid(row=3, column=0, sticky='w')
         self.password_entry.grid(row=3, column=1, padx=5, pady=5, sticky='w')
-        self.engineer_password_label.grid(row=4, column=0, sticky='w')
-        self.engineer_password_entry.grid(row=4, column=1, padx=5, pady=5, sticky='w')
-        self.profile_label.grid(row=5, column=0, sticky='w')
-        self.profile_combobox.grid(row=5, column=1, padx=5, pady=5, sticky='w')
-        self.start_button.grid(row=6, column=0, padx=5, pady=5, sticky='w')
-        self.status_label.grid(row=6, column=1, padx=5, pady=5, sticky='w')
-        self.engineer_mode_button.grid(row=6, column=2, padx=5, pady=5, sticky='w')
-        self.engineer_mode_label.grid(row=6, column=3, padx=5, pady=5, sticky='w')
-        self.wide_end_button.grid(row=7, column=0, padx=5, pady=5, sticky='w')
-        self.middle_button.grid(row=7, column=1, padx=5, pady=5, sticky='w')
-        self.tele_end_button.grid(row=8, column=0, padx=5, pady=5, sticky='w')
-        self.autofocus_button.grid(row=8, column=1, padx=5, pady=5, sticky='w')
-        self.capture_button.grid(row=8, column=2, columnspan=2, padx=5, pady=5, sticky='w')
-        self.roi_listbox_label.grid(row=10, column=0, sticky='w')
-        self.roi_listbox.grid(row=10, column=1, padx=5, pady=5, sticky='w')
-        self.clear_button.grid(row=11, column=0, sticky='w')
-        self.threshold_label_center.grid(row=9, column=2, padx=5, pady=5, sticky='w')
-        self.threshold_entry_center.grid(row=9, column=3, padx=5, pady=5, sticky='w')
-        self.threshold_label_surround.grid(row=10, column=2, padx=5, pady=5, sticky='w')
-        self.threshold_entry_surround.grid(row=10, column=3, padx=5, pady=5, sticky='w')
-        self.threshold_label_delta.grid(row=11, column=2, padx=5, pady=5, sticky='w')
-        self.threshold_entry_delta.grid(row=11, column=3, padx=5, pady=5, sticky='w')
-        self.export_button.grid(row=17, column=13, padx=5, pady=5, sticky='w')
-        self.camera_status_label.grid(row=9, column=0, columnspan=2, padx=5, pady=5, sticky='w')
+        self.engineer_password_label.grid(row=3, column=2, sticky='w')
+        self.engineer_password_entry.grid(row=3, column=3, padx=5, pady=5, sticky='w')
+        self.profile_label.grid(row=5, column=2, sticky='w')
+        self.profile_combobox.grid(row=5, column=3, padx=5, pady=5, sticky='w')
+        self.start_button.grid(row=4, column=0, padx=5, pady=5, sticky='w')
+        self.status_label.grid(row=4, column=1, padx=5, pady=5, sticky='w')
+        self.engineer_mode_button.grid(row=4, column=2, padx=5, pady=5, sticky='w')
+        self.engineer_mode_label.grid(row=4, column=3, padx=5, pady=5, sticky='w')
+        self.wide_end_button.grid(row=5, column=0, padx=5, pady=5, sticky='w')
+        self.middle_button.grid(row=5, column=1, padx=5, pady=5, sticky='w')
+        self.tele_end_button.grid(row=6, column=0, padx=5, pady=5, sticky='w')
+        self.autofocus_button.grid(row=6, column=1, padx=5, pady=5, sticky='w')
+        self.capture_button.grid(row=6,column=2, columnspan=2, padx=5, pady=5, sticky='w')
+        self.roi_listbox_label.grid(row=8, column=0, sticky='w')
+        self.roi_listbox.grid(row=8, column=1, padx=5, pady=5, sticky='w')
+        self.clear_button.grid(row=9, column=0, sticky='w')
+        self.threshold_label_center.grid(row=7, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_center.grid(row=7, column=3, padx=5, pady=5, sticky='w')
+        self.threshold_label_surround.grid(row=8, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_surround.grid(row=8, column=3, padx=5, pady=5, sticky='w')
+        self.threshold_label_delta.grid(row=9, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_delta.grid(row=9, column=3, padx=5, pady=5, sticky='w')
+        self.export_button.grid(row=19, column=13, padx=5, pady=5, sticky='w')
+        self.camera_status_label.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky='w')
         self.roi_listbox.bind("<Double-1>", self.edit_roi)
 
     def bind_canvas_events(self):
@@ -174,7 +173,6 @@ class MTFApplication:
     def on_profile_change(self, event):
         profile_name = self.current_profile.get()
         self.apply_threshold_profile(profile_name)
-        self.save_thresholds()
 
     def apply_threshold_profile(self, profile_name):
         profile = self.threshold_profiles.get(profile_name, {})
@@ -187,6 +185,7 @@ class MTFApplication:
         self.threshold_entry_surround.insert(0, str(self.mtf_threshold_surround))
         self.threshold_entry_delta.delete(0, tk.END)
         self.threshold_entry_delta.insert(0, str(self.mtf_delta_threshold))
+        self.save_thresholds()
 
     def on_start(self):
         ip = self.ip_entry.get()
@@ -225,20 +224,15 @@ class MTFApplication:
             f'http://{ip}/cgi-bin/get?encode.profile.1.config'
         ]
         result = subprocess.run(curl_command, capture_output=True, text=True)
-        print(result.stdout)  # For debugging
-
         match = re.search(r'(\d+x\d+)/', result.stdout)
         if match:
             max_resolution_str = match.group(1)
             max_resolution = tuple(map(int, max_resolution_str.split('x')))
-            self.stream_resolution = max_resolution  # Save the resolution for use in mouse events
+            self.stream_resolution = max_resolution
         else:
-            print("Failed to extract resolution.")
             return
 
         window_width, window_height = (1920, 1080)
-        print(f"Max resolution: {max_resolution}, Aspect ratio: {max_resolution[0] / max_resolution[1]}")
-
         cap = cv2.VideoCapture(rtsp_url)
         cv2.namedWindow("RTSP Stream", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("RTSP Stream", window_width, window_height)
@@ -372,13 +366,11 @@ class MTFApplication:
     def get_max_optical_zoom(self, ip, username, password):
         get_max = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/get?motorized_lens.info.max_optical_zoom']
         get_max_result = subprocess.run(get_max, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-        print(get_max_result.stdout)
         match = re.search(r'"motorized_lens\.info\.max_optical_zoom":\["ok","(\d+\.\d+)"\]', get_max_result.stdout)
         if match:
             max_optical_zoom = match.group(1)
             return max_optical_zoom
         else:
-            print("Could not find max optical zoom value in the response.")
             return None
 
     def monitor_camera_status(self, ip, username, password):
@@ -398,7 +390,6 @@ class MTFApplication:
             ctrl_status = match.group(1)
             return ctrl_status
         else:
-            print("Could not find control status value in the response.")
             return None
 
     def on_wide_end(self):
@@ -413,21 +404,19 @@ class MTFApplication:
             if status == "idle" or status == "done":
                 try:
                     result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                    print(result.stdout)
                 except Exception as e:
-                    print(f"Error executing curl command: {e}")
+                    pass
             else:
-                print("Camera is busy. Please wait until it is idle.")
+                pass
         else:
             if status == "idle" or status == "done":
                 command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute=1']
                 try:
                     result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                    print(result.stdout)
                 except Exception as e:
-                    print(f"Error executing curl command: {e}")
+                    pass
             else:
-                print("Camera is busy. Please wait until it is idle.")
+                pass
 
     def on_middle(self):
         self.clear_rois()
@@ -453,7 +442,6 @@ class MTFApplication:
             if status == "idle" or status == "done":
                 middle_optical_zoom = (
                     float(max_optical_zoom) + min_optical_zoom) / 2
-                print(middle_optical_zoom)
                 command = [
                     'curl',
                     '--cookie',
@@ -468,11 +456,10 @@ class MTFApplication:
                         capture_output=True,
                         text=True,
                         creationflags=subprocess.CREATE_NO_WINDOW)
-                    print(result.stdout)
                 except Exception as e:
-                    print(f"Error executing curl command: {e}")
+                    pass
             else:
-                print("Camera is busy. Please wait until it is idle.")
+                pass
         if status == "idle" or status == "done":
             if max_optical_zoom:
                 middle_optical_zoom = (
@@ -491,11 +478,10 @@ class MTFApplication:
                         capture_output=True,
                         text=True,
                         creationflags=subprocess.CREATE_NO_WINDOW)
-                    print(result.stdout)
                 except Exception as e:
-                    print(f"Error executing curl command: {e}")
+                    pass
         else:
-            print("Camera is busy. Please wait until it is idle.")
+            pass
 
     def on_tele_end(self):
         self.clear_rois()
@@ -517,22 +503,20 @@ class MTFApplication:
                 command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute={zoom_value}']
                 try:
                     result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                    print(result.stdout)
                 except Exception as e:
-                    print(f"Error executing curl command: {e}")
+                    pass
             else:
-                print("Camera is busy. Please wait until it is idle.")
+                pass
         else:
             max_optical_zoom = self.get_max_optical_zoom(ip, username, password)
             if status == "idle" or status == "done":
                 command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.zoom.move.absolute={max_optical_zoom}']
                 try:
                     result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                    print(result.stdout)
                 except Exception as e:
-                    print(f"Error executing curl command: {e}")
+                    pass
             else:
-                print("Camera is busy. Please wait until it is idle.")
+                pass
 
     def on_autofocus(self):
         ip = self.ip_entry.get()
@@ -542,15 +526,13 @@ class MTFApplication:
         if device_type[0:3] == "SPD":
             first_command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.focus.mode=manual']
             result = subprocess.run(first_command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            print(result.stdout)
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.focus.manual.move.one_push=1']
         else:
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.focus.move.one_push=1']
         try:
             result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            print(result.stdout)
         except Exception as e:
-            print(f"Error executing curl command: {e}")
+            pass
 
     def calculate_mtfs(self, label_idx):
         self.mtf_threshold_center = float(self.threshold_entry_center.get())
@@ -615,7 +597,6 @@ class MTFApplication:
                 self.threshold_entry_center.config(state='normal')
                 self.threshold_entry_surround.config(state='normal')
                 self.threshold_entry_delta.config(state='normal')
-                print("Entered Engineer Mode")
             else:
                 self.engineer_mode = False
                 self.engineer_mode_button.config(text="Engineer Mode: OFF")
@@ -623,9 +604,9 @@ class MTFApplication:
                 self.threshold_entry_center.config(state='disabled')
                 self.threshold_entry_surround.config(state='disabled')
                 self.threshold_entry_delta.config(state='disabled')
-                print("Exited Engineer Mode")
+            self.save_thresholds()
         else:
-            print("Incorrect Engineer Credentials")
+            pass
 
     def export_to_excel(self):
         now = datetime.datetime.now()
@@ -668,7 +649,6 @@ class MTFApplication:
         file_path = filedialog.asksaveasfilename(initialfile=f"MTFTestResults_{formatted_time}", defaultextension='.xlsx', filetypes=[("Excel files", "*.xlsx")])
         if file_path:
             df.to_excel(file_path, index=False)
-            print("Exported to Excel:", file_path)
 
     def on_closing(self):
         self.mtf_threshold_center = float(self.threshold_entry_center.get())
