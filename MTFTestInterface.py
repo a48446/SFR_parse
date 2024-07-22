@@ -14,17 +14,23 @@ from scipy.fftpack import fft
 from tkinter import ttk, filedialog
 from multiprocessing import Queue, set_start_method, freeze_support
 import xml.etree.ElementTree as ET
+import pandas as pd
 
 class MTFApplication:
     def __init__(self, master):
         self.master = master
         self.roi_list = []
-        self.roi_ids = []
-        self.roi_labels = []
         self.current_roi = None
-        self.device_var = tk.StringVar(value="SPD-other")
+        self.device_var = tk.StringVar(value="SPD-T5390")
         self.rtsp_url = None
-        self.current_frame = None  # Add current_frame to store the latest frame
+        self.current_frame = None
+        self.stream_resolution = None
+        self.test_counters = [0] * 5
+        self.mtf_threshold_center = 0.5
+        self.mtf_threshold_surround = 0.5
+        self.mtf_delta_threshold = 0.1
+        self.mtf_results = [[] for _ in range(5)]
+        self.engineer_mode = False
         self.setup_ui()
         self.disable_controls()
 
@@ -38,17 +44,34 @@ class MTFApplication:
         self.ip_entry = ttk.Entry(self.master)
         self.device_label = ttk.Label(self.master, text="Device:")
         self.device_combobox = ttk.Combobox(self.master, textvariable=self.device_var)
-        self.device_combobox['values'] = ("SPD-other","SPD-T5390", "SPD-T5391", "SPD-T5373", "SPD-T5375", "other")
+        self.device_combobox['values'] = ("SPD-T5390", "SPD-T5391", "SPD-T5373", "SPD-T5375", "other")
         self.username_label = ttk.Label(self.master, text="Username:")
         self.username_entry = ttk.Entry(self.master)
         self.password_label = ttk.Label(self.master, text="Password:")
         self.password_entry = ttk.Entry(self.master, show="*")
+        self.engineer_password_label = ttk.Label(self.master, text="Engineer Password:")
+        self.engineer_password_entry = ttk.Entry(self.master, show="*")
         self.start_button = ttk.Button(self.master, text="Start", command=self.on_start)
+        self.engineer_mode_button = ttk.Button(self.master, text="Enter Engineer Mode", command=self.toggle_engineer_mode)
+        self.engineer_mode_label = ttk.Label(self.master, text="OFF", foreground="red")
         self.status_label = ttk.Label(self.master, text="Not Connected")
         self.roi_listbox_label = ttk.Label(self.master, text="Selected ROIs:")
         self.roi_listbox = tk.Listbox(self.master, height=5)
         self.clear_button = ttk.Button(self.master, text="Clear ROIs", command=self.clear_rois)
+        self.threshold_label_center = ttk.Label(self.master, text="Center Threshold:")
+        self.threshold_entry_center = ttk.Entry(self.master)
+        self.threshold_entry_center.insert(0, str(self.mtf_threshold_center))
+        self.threshold_entry_center.config(state='disabled')
+        self.threshold_label_surround = ttk.Label(self.master, text="Corner Threshold:")
+        self.threshold_entry_surround = ttk.Entry(self.master)
+        self.threshold_entry_surround.insert(0, str(self.mtf_threshold_surround))
+        self.threshold_entry_surround.config(state='disabled')
+        self.threshold_label_delta = ttk.Label(self.master, text="Corner Diff Threshold:")
+        self.threshold_entry_delta = ttk.Entry(self.master)
+        self.threshold_entry_delta.insert(0, str(self.mtf_delta_threshold))
+        self.threshold_entry_delta.config(state='disabled')
         self.capture_button = ttk.Button(self.master, text="Capture Screenshot", command=self.capture_screenshot)
+        self.export_button = ttk.Button(self.master, text="Export Excel", command=self.export_to_excel)
         self.wide_end_button = ttk.Button(self.master, text="Wide end", command=self.on_wide_end)
         self.middle_button = ttk.Button(self.master, text="Middle", command=self.on_middle)
         self.tele_end_button = ttk.Button(self.master, text="Tele end", command=self.on_tele_end)
@@ -56,17 +79,30 @@ class MTFApplication:
         self.camera_status_label = ttk.Label(self.master, text="Camera status: unknown")
         angles = ['0°', '45° - Face 1', '45° - Face 2', '45° - Face 3', '45° - Face 4']
         self.roi_mtf_labels = []
+        self.roi_diff_labels = []  # Add for diff labels
+        self.roi_status_labels = []
+        self.test_counter_labels = []
+        roi_labels = ["MTF_UL", "MTF_UR", "MTF_LL", "MTF_LR", "MTF_C"]
         for idx, angle in enumerate(angles):
             angle_label = ttk.Label(self.master, text=angle)
-            angle_label.grid(column=0, row=10 + idx, padx=5, pady=5, sticky='w')
+            angle_label.grid(column=0, row=12 + idx, padx=5, pady=5, sticky='w')
             test_button = ttk.Button(self.master, text="Test", command=lambda idx=idx: self.calculate_mtfs(idx))
-            test_button.grid(column=1, row=10 + idx, padx=5, pady=5, sticky='w')
+            test_button.grid(column=1, row=12 + idx, padx=5, pady=5, sticky='w')
+            test_counter_label = ttk.Label(self.master, text=f"Count: {self.test_counters[idx]}")
+            test_counter_label.grid(column=2, row=12 + idx, padx=5, pady=5, sticky='w')
+            self.test_counter_labels.append(test_counter_label)
             mtf_labels = []
+            diff_label = ttk.Label(self.master, text="Diff=")  # Add diff label
+            status_label = ttk.Label(self.master, text="Status:")
             for roi_idx in range(5):
-                mtf_label = ttk.Label(self.master, text=f'MTF{roi_idx + 1}=')
-                mtf_label.grid(column=2 + roi_idx, row=10 + idx, padx=5, pady=5, sticky='e')
+                mtf_label = ttk.Label(self.master, text=f'{roi_labels[roi_idx]}=')
+                mtf_label.grid(column=3 + roi_idx * 2, row=12 + idx, padx=5, pady=5, sticky='e')
                 mtf_labels.append(mtf_label)
+            diff_label.grid(column=13, row=12 + idx, padx=5, pady=5, sticky='w')  # Add diff label
+            status_label.grid(column=14, row=12 + idx, padx=5, pady=5, sticky='w')
             self.roi_mtf_labels.append(mtf_labels)
+            self.roi_diff_labels.append(diff_label)  # Add diff label
+            self.roi_status_labels.append(status_label)
 
     def arrange_grid(self):
         self.device_label.grid(row=0, column=0, sticky='w')
@@ -77,21 +113,32 @@ class MTFApplication:
         self.username_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
         self.password_label.grid(row=3, column=0, sticky='w')
         self.password_entry.grid(row=3, column=1, padx=5, pady=5, sticky='w')
+        self.engineer_password_label.grid(row=3, column=2, sticky='w')
+        self.engineer_password_entry.grid(row=3, column=3, padx=5, pady=5, sticky='w')
         self.start_button.grid(row=4, column=0, padx=5, pady=5, sticky='w')
         self.status_label.grid(row=4, column=1, padx=5, pady=5, sticky='w')
+        self.engineer_mode_button.grid(row=4, column=2, padx=5, pady=5, sticky='w')
+        self.engineer_mode_label.grid(row=4, column=3, padx=5, pady=5, sticky='w')
         self.wide_end_button.grid(row=5, column=0, padx=5, pady=5, sticky='w')
         self.middle_button.grid(row=5, column=1, padx=5, pady=5, sticky='w')
         self.tele_end_button.grid(row=6, column=0, padx=5, pady=5, sticky='w')
         self.autofocus_button.grid(row=6, column=1, padx=5, pady=5, sticky='w')
         self.capture_button.grid(row=6, column=2, columnspan=2, padx=5, pady=5, sticky='w')
-        self.roi_listbox_label.grid(row=8, column=0, sticky='w')
-        self.roi_listbox.grid(row=8, column=1, padx=5, pady=5, sticky='w')
-        self.clear_button.grid(row=9, column=0, columnspan=2, padx=5, pady=5, sticky='w')
-        self.camera_status_label.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky='w')
+        self.roi_listbox_label.grid(row=10, column=0, sticky='w')
+        self.roi_listbox.grid(row=10, column=1, padx=5, pady=5, sticky='w')
+        self.clear_button.grid(row=11, column=0, sticky='w')
+        self.threshold_label_center.grid(row=9, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_center.grid(row=9, column=3, padx=5, pady=5, sticky='w')
+        self.threshold_label_surround.grid(row=10, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_surround.grid(row=10, column=3, padx=5, pady=5, sticky='w')
+        self.threshold_label_delta.grid(row=11, column=2, padx=5, pady=5, sticky='w')
+        self.threshold_entry_delta.grid(row=11, column=3, padx=5, pady=5, sticky='w')
+        self.export_button.grid(row=17, column=13, padx=5, pady=5, sticky='w')  # Move Export Excel button
+        self.camera_status_label.grid(row=9, column=0, columnspan=2, padx=5, pady=5, sticky='w')
         self.roi_listbox.bind("<Double-1>", self.edit_roi)
 
     def bind_canvas_events(self):
-        pass  # No need to bind events to the canvas as we're not using it for streaming
+        pass
 
     def on_start(self):
         ip = self.ip_entry.get()
@@ -121,99 +168,115 @@ class MTFApplication:
         self.stream_thread.start()
 
     def display_opencv_stream(self, rtsp_url):
-        resolutions_16_9 = [
-            (256, 144),
-            (320, 180),
-            (640, 360),
-            (854, 480),
-            (1024, 576),
-            (1280, 720),
-            (1600, 900),
-            (1920, 1080),
-            (2560, 1440),
-            (3840, 2160)
-        ]
-        resolutions_4_3 = [
-            (320, 240),
-            (640, 480),
-            (800, 600),
-            (1024, 768),
-            (1280, 960),
-            (1400, 1050),
-            (1600, 1200),
-            (2048, 1536),
-            (3200, 2400)
-        ]
         ip = self.ip_entry.get()
         username = self.username_entry.get()
         password = self.password_entry.get()
+        
+        # Send a curl request to get the current video encoding profile
         curl_command = [
-            'curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', 
-            f'http://{ip}/cgi-bin/streamTable.cgi?1720165697177'
+            'curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}',
+            f'http://{ip}/cgi-bin/get?encode.profile.1.config'
         ]
         result = subprocess.run(curl_command, capture_output=True, text=True)
-        xml_data = result.stdout
-        root = ET.fromstring(xml_data)
-        resolutions = []
-        for resolution in root.findall(".//resolution"):
-            config = resolution.get('config')
-            if config and "x" in config:
-                resolutions.append(tuple(map(int, config.split('x'))))
-        
-        if not resolutions:
-            print("No valid resolutions found.")
-            return
-        
-        max_resolution = max(resolutions, key=lambda res: (res[0], res[1]))
-        aspect_ratio = max_resolution[0] / max_resolution[1]
-        
-        if abs(aspect_ratio - (16 / 9)) < abs(aspect_ratio - (4 / 3)):
-            aspect_type = "16:9"
-            max_window_size = (1920, 1080)
-            aspect_resolutions = resolutions_16_9
+        print(result.stdout)  # For debugging
+
+        # Extract the resolution part using regex
+        import re
+        match = re.search(r'(\d+x\d+)/', result.stdout)
+        if match:
+            max_resolution_str = match.group(1)
+            max_resolution = tuple(map(int, max_resolution_str.split('x')))
+            self.stream_resolution = max_resolution  # Save the resolution for use in mouse events
         else:
-            aspect_type = "4:3"
-            max_window_size = (1600, 1200)
-            aspect_resolutions = resolutions_4_3
+            print("Failed to extract resolution.")
+            return
 
-        print(f"Max resolution: {max_resolution}, Aspect type: {aspect_type}")
+        # Window size is fixed at 1920x1080
+        window_width, window_height = (1920, 1080)
 
-        window_width, window_height = max_resolution
-        if window_width > max_window_size[0] or window_height > max_window_size[1]:
-            window_width, window_height = max_window_size
+        print(f"Max resolution: {max_resolution}, Aspect ratio: {max_resolution[0] / max_resolution[1]}")
 
+        # Open the video capture and set up the window
         cap = cv2.VideoCapture(rtsp_url)
         cv2.namedWindow("RTSP Stream", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("RTSP Stream", window_width, window_height)
         cv2.setMouseCallback("RTSP Stream", self.on_opencv_mouse_event)
-        
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
             self.current_frame = frame
 
+            # Resize frame to fit the window size
+            display_frame = cv2.resize(frame, (window_width, window_height))
+
+            # Draw ROI rectangles and labels
             for idx, (roi, label) in enumerate(self.roi_list):
-                cv2.rectangle(frame, (roi[0], roi[1]), (roi[2], roi[3]), (0, 0, 255), 2)
-                cv2.putText(frame, label, (roi[0], roi[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
-            
-            cv2.imshow("RTSP Stream", frame)
+                # Adjust ROI coordinates based on the scaling factor
+                scale_x = window_width / self.stream_resolution[0]
+                scale_y = window_height / self.stream_resolution[1]
+                scaled_roi = (
+                    int(roi[0] * scale_x), int(roi[1] * scale_y),
+                    int(roi[2] * scale_x), int(roi[3] * scale_y)
+                )
+                cv2.rectangle(display_frame, (scaled_roi[0], scaled_roi[1]), (scaled_roi[2], scaled_roi[3]), (0, 0, 255), 2)
+                cv2.putText(display_frame, label, (scaled_roi[0], scaled_roi[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+
+            cv2.imshow("RTSP Stream", display_frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-        
+
+        # Clean up
+        cap.release()
+        cv2.destroyAllWindows()
+
+        # Reinitialize the stream with original resolution if window was closed
+        self.stream_thread = threading.Thread(target=self.display_opencv_stream, args=(rtsp_url,))
+        self.stream_thread.daemon = True
+        self.stream_thread.start()
+
+    def display_opencv_stream_fixed_resolution(self, rtsp_url):
+        fixed_width, fixed_height = self.stream_resolution
+        cap = cv2.VideoCapture(rtsp_url)
+        cv2.namedWindow("RTSP Stream", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("RTSP Stream", fixed_width, fixed_height)
+        cv2.setMouseCallback("RTSP Stream", self.on_opencv_mouse_event)
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            self.current_frame = frame
+
+            display_frame = frame.copy()
+            for idx, (roi, label) in enumerate(self.roi_list):
+                cv2.rectangle(display_frame, (roi[0], roi[1]), (roi[2], roi[3]), (0, 0, 255), 2)
+                cv2.putText(display_frame, label, (roi[0], roi[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+
+            display_frame = cv2.resize(display_frame, (1920, 1080))
+            cv2.imshow("RTSP Stream", display_frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
         cap.release()
         cv2.destroyAllWindows()
 
     def on_opencv_mouse_event(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             if len(self.roi_list) < 5:
-                self.current_roi = [x, y, x, y]
+                scale_x = self.stream_resolution[0] / 1920
+                scale_y = self.stream_resolution[1] / 1080
+                self.current_roi = [int(x * scale_x), int(y * scale_y), int(x * scale_x), int(y * scale_y)]
         elif event == cv2.EVENT_MOUSEMOVE and self.current_roi is not None:
-            self.current_roi[2] = x
-            self.current_roi[3] = y
+            scale_x = self.stream_resolution[0] / 1920
+            scale_y = self.stream_resolution[1] / 1080
+            self.current_roi[2] = int(x * scale_x)
+            self.current_roi[3] = int(y * scale_y)
         elif event == cv2.EVENT_LBUTTONUP:
             if self.current_roi is not None:
-                roi_label = f"ROI{len(self.roi_list) + 1}"
+                roi_positions = ["UL", "UR", "LL", "LR", "C"]  # Define labels for each ROI
+                roi_label = f"ROI_{roi_positions[len(self.roi_list)]}"
                 self.roi_list.append((tuple(self.current_roi), roi_label))
                 self.update_roi_listbox()
                 self.current_roi = None
@@ -259,7 +322,7 @@ class MTFApplication:
     def capture_screenshot(self):
         if self.current_frame is not None:
             now = datetime.datetime.now()
-            formatted_time = now.strftime("%m%d_%H%M")
+            formatted_time = now.strftime("%Y%m%d%H%M")
             default_filename = f"capturescreenshot_{formatted_time}.png"
             file_path = filedialog.asksaveasfilename(initialfile=default_filename, defaultextension='.png', filetypes=[("PNG files", "*.png")])
             if file_path:
@@ -350,8 +413,6 @@ class MTFApplication:
                 max_optical_zoom = 3000
             if device_list == "T5375":
                 max_optical_zoom = 4200
-            if device_list == "other":
-                max_optical_zoom = 420
 
             if status == "idle" or status == "done":
                 middle_optical_zoom = (
@@ -417,8 +478,6 @@ class MTFApplication:
                     zoom_value = 3000
                 elif device_type == "SPD-T5375":
                     zoom_value = 4200
-                elif device_type == "SPD-other":
-                    zoom_value = 420
                 command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.zoom.move.absolute={zoom_value}']
                 try:
                     result = subprocess.run(command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -445,6 +504,9 @@ class MTFApplication:
         password = self.password_entry.get()
         device_type = self.device_var.get()
         if device_type[0:3] == "SPD":
+            first_command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.focus.mode=manual']
+            result = subprocess.run(first_command, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            print(result.stdout)
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?ptz.focus.manual.move.one_push=1']
         else:
             command = ['curl', '--cookie', 'ipcamera=test', '--digest', '-u', f'{username}:{password}', f'http://{ip}/cgi-bin/set?motorized_lens.focus.move.one_push=1']
@@ -455,13 +517,34 @@ class MTFApplication:
             print(f"Error executing curl command: {e}")
 
     def calculate_mtfs(self, label_idx):
+        # Ensure thresholds are updated before calculating MTFs
+        self.mtf_threshold_center = float(self.threshold_entry_center.get())
+        self.mtf_threshold_surround = float(self.threshold_entry_surround.get())
+        self.mtf_delta_threshold = float(self.threshold_entry_delta.get())
+
         if self.current_frame is not None:
+            self.test_counters[label_idx] += 1
+            self.test_counter_labels[label_idx].config(text=f"Count: {self.test_counters[label_idx]}")
             frame_image = Image.fromarray(self.current_frame)
+            mtf_values = []
+            min_mtf = float('inf')
+            max_mtf = 0
             for idx, (roi, label) in enumerate(self.roi_list):
                 sfr = SFR(frame_image, roi)
                 results = sfr.calculate()
                 mtf50 = results['MTF50']
-                self.roi_mtf_labels[label_idx][idx].config(text=f'MTF{idx + 1}={mtf50:.2f}')
+                mtf_values.append(mtf50)
+                roi_labels = ["MTF_UL", "MTF_UR", "MTF_LL", "MTF_LR", "MTF_C"]
+                color = "red" if mtf50 < self.mtf_threshold_surround and label != "ROI_C" else "black"
+                color = "red" if label == "ROI_C" and mtf50 < self.mtf_threshold_center else color
+                self.roi_mtf_labels[label_idx][idx].config(text=f'{roi_labels[idx]}={mtf50:.2f}', foreground=color)
+            self.mtf_results[label_idx] = mtf_values
+            corner_diff = max(mtf_values[:-1]) - min(mtf_values[:-1])
+            delta_pass = corner_diff <= self.mtf_delta_threshold
+            overall_status = "Pass" if all(m >= self.mtf_threshold_surround for m in mtf_values[:-1]) and mtf_values[-1] >= self.mtf_threshold_center and delta_pass else "Fail"
+            color = "red" if not delta_pass else "black"
+            self.roi_diff_labels[label_idx].config(text=f'Diff={corner_diff:.2f}', foreground=color)
+            self.roi_status_labels[label_idx].config(text=overall_status, foreground=("green" if overall_status == "Pass" else "red"))
 
     def enable_controls(self):
         self.wide_end_button.config(state=tk.NORMAL)
@@ -470,6 +553,7 @@ class MTFApplication:
         self.autofocus_button.config(state=tk.NORMAL)
         self.capture_button.config(state=tk.NORMAL)
         self.clear_button.config(state=tk.NORMAL)
+        self.export_button.config(state=tk.NORMAL)
         for idx, angle in enumerate(self.roi_mtf_labels):
             for label in angle:
                 label.config(state=tk.NORMAL)
@@ -485,6 +569,70 @@ class MTFApplication:
             for label in angle:
                 label.config(state=tk.DISABLED)
 
+    def toggle_engineer_mode(self):
+        engineer_password = self.engineer_password_entry.get()
+        if engineer_password == "TopView@30":
+            if not self.engineer_mode:
+                self.engineer_mode = True
+                self.engineer_mode_button.config(text="Engineer Mode: ON")
+                self.engineer_mode_label.config(text="ON", foreground="green")
+                self.threshold_entry_center.config(state='normal')
+                self.threshold_entry_surround.config(state='normal')
+                self.threshold_entry_delta.config(state='normal')
+                print("Entered Engineer Mode")
+            else:
+                self.engineer_mode = False
+                self.engineer_mode_button.config(text="Engineer Mode: OFF")
+                self.engineer_mode_label.config(text="OFF", foreground="red")
+                self.threshold_entry_center.config(state='disabled')
+                self.threshold_entry_surround.config(state='disabled')
+                self.threshold_entry_delta.config(state='disabled')
+                print("Exited Engineer Mode")
+        else:
+            print("Incorrect Engineer Credentials")
+
+    def export_to_excel(self):
+        now = datetime.datetime.now()
+        formatted_time = now.strftime("%Y%m%d%H%M")
+        data = {
+            'Angle': ['0°', '45° - Face 1', '45° - Face 2', '45° - Face 3', '45° - Face 4'],
+            'Count': self.test_counters,
+            'Result': [],
+            'Corner_diff': [],
+            'Center_TH': [self.mtf_threshold_center] * 5,
+            'Corner_TH': [self.mtf_threshold_surround] * 5,
+            'Corner_diff_TH': [self.mtf_delta_threshold] * 5,
+        }
+        mtf_labels = ['MTF_UL', 'MTF_UR', 'MTF_LL', 'MTF_LR', 'MTF_C']
+        
+        for label in mtf_labels:
+            data[label] = []
+
+        for i in range(5):
+            if i < len(self.mtf_results) and len(self.mtf_results[i]) == 5:
+                mtf_values = self.mtf_results[i]
+                min_mtf = min(mtf_values[:-1])
+                max_mtf = max(mtf_values[:-1])
+                corner_diff = max_mtf - min_mtf
+                data['Corner_diff'].append(corner_diff)
+                center_pass = mtf_values[-1] >= self.mtf_threshold_center
+                surround_pass = all(m >= self.mtf_threshold_surround for m in mtf_values[:-1])
+                delta_pass = corner_diff <= self.mtf_delta_threshold
+                result = "Pass" if center_pass and surround_pass and delta_pass else "Fail"
+                data['Result'].append(result)
+            else:
+                mtf_values = [None] * 5
+                data['Corner_diff'].append(None)
+                data['Result'].append("Fail")
+            
+            for j, label in enumerate(mtf_labels):
+                data[label].append(mtf_values[j])
+
+        df = pd.DataFrame(data)
+        file_path = filedialog.asksaveasfilename(initialfile=f"MTFTestResults_{formatted_time}", defaultextension='.xlsx', filetypes=[("Excel files", "*.xlsx")])
+        if file_path:
+            df.to_excel(file_path, index=False)
+            print("Exported to Excel:", file_path)
 
 class SFR:
     def __init__(self, image, image_roi, gamma=0.5, oversampling_rate=4):
@@ -573,17 +721,15 @@ class SFR:
             if idx > 0 and mtf_data[idx] < 0.5 and mtf_data[idx - 1] >= 0.5:
                 mtf50 = (idx - 1 + (0.5 - mtf_data[idx]) / (mtf_data[idx - 1] - mtf_data[idx])) / (len(mtf_data) - 1)
                 break
-        return mtf_data, mtf50, 0  # mtf50p not used in this example
-
+        return mtf_data, mtf50, 0
 
 def main():
     set_start_method("spawn")
     root = tk.Tk()
-    root.title("MTFTestInterface-v2.0")
-    root.geometry("800x600")
+    root.title("MTFTestInterface-v2.2")
+    root.geometry("1100x600")
     app = MTFApplication(root)
     root.mainloop()
-
 
 if __name__ == "__main__":
     freeze_support()
