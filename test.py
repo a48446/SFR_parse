@@ -33,8 +33,15 @@ class MTFApplication:
         self.mtf_results = [[] for _ in range(5)]
         self.engineer_mode = False
         self.config_file = 'config.json'
+        self.threshold_profiles = {
+            "Profile 1": {"mtf_threshold_center": 0.5, "mtf_threshold_surround": 0.5, "mtf_delta_threshold": 0.1},
+            "Profile 2": {"mtf_threshold_center": 0.6, "mtf_threshold_surround": 0.6, "mtf_delta_threshold": 0.15},
+            "Profile 3": {"mtf_threshold_center": 0.7, "mtf_threshold_surround": 0.7, "mtf_delta_threshold": 0.2}
+        }
+        self.current_profile = tk.StringVar(value="Profile 1")
         self.load_thresholds()
         self.setup_ui()
+        self.apply_threshold_profile(self.current_profile.get())
         self.disable_controls()
 
         # 在關閉視窗時保存閥值
@@ -44,20 +51,13 @@ class MTFApplication:
         if os.path.exists(self.config_file):
             with open(self.config_file, 'r') as f:
                 config = json.load(f)
-                self.mtf_threshold_center = config.get('mtf_threshold_center', 0.5)
-                self.mtf_threshold_surround = config.get('mtf_threshold_surround', 0.5)
-                self.mtf_delta_threshold = config.get('mtf_delta_threshold', 0.1)
+                self.threshold_profiles.update(config)
         else:
             self.save_thresholds()
 
     def save_thresholds(self):
-        config = {
-            'mtf_threshold_center': self.mtf_threshold_center,
-            'mtf_threshold_surround': self.mtf_threshold_surround,
-            'mtf_delta_threshold': self.mtf_delta_threshold
-        }
         with open(self.config_file, 'w') as f:
-            json.dump(config, f)
+            json.dump(self.threshold_profiles, f)
 
     def setup_ui(self):
         self.create_widgets()
@@ -76,6 +76,10 @@ class MTFApplication:
         self.password_entry = ttk.Entry(self.master, show="*")
         self.engineer_password_label = ttk.Label(self.master, text="Engineer Password:")
         self.engineer_password_entry = ttk.Entry(self.master, show="*")
+        self.profile_label = ttk.Label(self.master, text="Threshold Profile:")
+        self.profile_combobox = ttk.Combobox(self.master, textvariable=self.current_profile)
+        self.profile_combobox['values'] = list(self.threshold_profiles.keys())
+        self.profile_combobox.bind("<<ComboboxSelected>>", self.on_profile_change)
         self.start_button = ttk.Button(self.master, text="Start", command=self.on_start)
         self.engineer_mode_button = ttk.Button(self.master, text="Enter Engineer Mode", command=self.toggle_engineer_mode)
         self.engineer_mode_label = ttk.Label(self.master, text="OFF", foreground="red")
@@ -110,21 +114,21 @@ class MTFApplication:
         roi_labels = ["MTF_UL", "MTF_UR", "MTF_LL", "MTF_LR", "MTF_C"]
         for idx, angle in enumerate(angles):
             angle_label = ttk.Label(self.master, text=angle)
-            angle_label.grid(column=0, row=12 + idx, padx=5, pady=5, sticky='w')
+            angle_label.grid(column=0, row=13 + idx, padx=5, pady=5, sticky='w')
             test_button = ttk.Button(self.master, text="Test", command=lambda idx=idx: self.calculate_mtfs(idx))
-            test_button.grid(column=1, row=12 + idx, padx=5, pady=5, sticky='w')
+            test_button.grid(column=1, row=13 + idx, padx=5, pady=5, sticky='w')
             test_counter_label = ttk.Label(self.master, text=f"Count: {self.test_counters[idx]}")
-            test_counter_label.grid(column=2, row=12 + idx, padx=5, pady=5, sticky='w')
+            test_counter_label.grid(column=2, row=13 + idx, padx=5, pady=5, sticky='w')
             self.test_counter_labels.append(test_counter_label)
             mtf_labels = []
             diff_label = ttk.Label(self.master, text="Diff=")
             status_label = ttk.Label(self.master, text="Status:")
             for roi_idx in range(5):
                 mtf_label = ttk.Label(self.master, text=f'{roi_labels[roi_idx]}=')
-                mtf_label.grid(column=3 + roi_idx * 2, row=12 + idx, padx=5, pady=5, sticky='e')
+                mtf_label.grid(column=3 + roi_idx * 2, row=13 + idx, padx=5, pady=5, sticky='e')
                 mtf_labels.append(mtf_label)
-            diff_label.grid(column=13, row=12 + idx, padx=5, pady=5, sticky='w')
-            status_label.grid(column=14, row=12 + idx, padx=5, pady=5, sticky='w')
+            diff_label.grid(column=13, row=13 + idx, padx=5, pady=5, sticky='w')
+            status_label.grid(column=14, row=13 + idx, padx=5, pady=5, sticky='w')
             self.roi_mtf_labels.append(mtf_labels)
             self.roi_diff_labels.append(diff_label)
             self.roi_status_labels.append(status_label)
@@ -138,17 +142,19 @@ class MTFApplication:
         self.username_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
         self.password_label.grid(row=3, column=0, sticky='w')
         self.password_entry.grid(row=3, column=1, padx=5, pady=5, sticky='w')
-        self.engineer_password_label.grid(row=3, column=2, sticky='w')
-        self.engineer_password_entry.grid(row=3, column=3, padx=5, pady=5, sticky='w')
-        self.start_button.grid(row=4, column=0, padx=5, pady=5, sticky='w')
-        self.status_label.grid(row=4, column=1, padx=5, pady=5, sticky='w')
-        self.engineer_mode_button.grid(row=4, column=2, padx=5, pady=5, sticky='w')
-        self.engineer_mode_label.grid(row=4, column=3, padx=5, pady=5, sticky='w')
-        self.wide_end_button.grid(row=5, column=0, padx=5, pady=5, sticky='w')
-        self.middle_button.grid(row=5, column=1, padx=5, pady=5, sticky='w')
-        self.tele_end_button.grid(row=6, column=0, padx=5, pady=5, sticky='w')
-        self.autofocus_button.grid(row=6, column=1, padx=5, pady=5, sticky='w')
-        self.capture_button.grid(row=6, column=2, columnspan=2, padx=5, pady=5, sticky='w')
+        self.engineer_password_label.grid(row=4, column=0, sticky='w')
+        self.engineer_password_entry.grid(row=4, column=1, padx=5, pady=5, sticky='w')
+        self.profile_label.grid(row=5, column=0, sticky='w')
+        self.profile_combobox.grid(row=5, column=1, padx=5, pady=5, sticky='w')
+        self.start_button.grid(row=6, column=0, padx=5, pady=5, sticky='w')
+        self.status_label.grid(row=6, column=1, padx=5, pady=5, sticky='w')
+        self.engineer_mode_button.grid(row=6, column=2, padx=5, pady=5, sticky='w')
+        self.engineer_mode_label.grid(row=6, column=3, padx=5, pady=5, sticky='w')
+        self.wide_end_button.grid(row=7, column=0, padx=5, pady=5, sticky='w')
+        self.middle_button.grid(row=7, column=1, padx=5, pady=5, sticky='w')
+        self.tele_end_button.grid(row=8, column=0, padx=5, pady=5, sticky='w')
+        self.autofocus_button.grid(row=8, column=1, padx=5, pady=5, sticky='w')
+        self.capture_button.grid(row=8, column=2, columnspan=2, padx=5, pady=5, sticky='w')
         self.roi_listbox_label.grid(row=10, column=0, sticky='w')
         self.roi_listbox.grid(row=10, column=1, padx=5, pady=5, sticky='w')
         self.clear_button.grid(row=11, column=0, sticky='w')
@@ -164,6 +170,23 @@ class MTFApplication:
 
     def bind_canvas_events(self):
         pass
+
+    def on_profile_change(self, event):
+        profile_name = self.current_profile.get()
+        self.apply_threshold_profile(profile_name)
+        self.save_thresholds()
+
+    def apply_threshold_profile(self, profile_name):
+        profile = self.threshold_profiles.get(profile_name, {})
+        self.mtf_threshold_center = profile.get('mtf_threshold_center', 0.5)
+        self.mtf_threshold_surround = profile.get('mtf_threshold_surround', 0.5)
+        self.mtf_delta_threshold = profile.get('mtf_delta_threshold', 0.1)
+        self.threshold_entry_center.delete(0, tk.END)
+        self.threshold_entry_center.insert(0, str(self.mtf_threshold_center))
+        self.threshold_entry_surround.delete(0, tk.END)
+        self.threshold_entry_surround.insert(0, str(self.mtf_threshold_surround))
+        self.threshold_entry_delta.delete(0, tk.END)
+        self.threshold_entry_delta.insert(0, str(self.mtf_delta_threshold))
 
     def on_start(self):
         ip = self.ip_entry.get()
