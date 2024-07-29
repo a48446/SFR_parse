@@ -16,6 +16,7 @@ from multiprocessing import Queue, set_start_method, freeze_support
 import xml.etree.ElementTree as ET
 import pandas as pd
 import json
+from cryptography.fernet import Fernet
 
 class MTFApplication:
     def __init__(self, master):
@@ -33,6 +34,8 @@ class MTFApplication:
         self.mtf_results = [[] for _ in range(5)]
         self.engineer_mode = False
         self.config_file = 'config.json'
+        self.encryption_key = b'hdxFB4TaFhrav_-CX7KpomCAWJ2T6eEby2Q_9FzHn7g='
+        self.fernet = Fernet(self.encryption_key)
         self.load_thresholds()
         self.setup_ui()
         self.disable_controls()
@@ -40,10 +43,18 @@ class MTFApplication:
         # 在關閉視窗時保存閥值
         self.master.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+    def encrypt(self, data):
+        return self.fernet.encrypt(data.encode()).decode()
+
+    def decrypt(self, data):
+        return self.fernet.decrypt(data.encode()).decode()
+
     def load_thresholds(self):
         if os.path.exists(self.config_file):
             with open(self.config_file, 'r') as f:
-                config = json.load(f)
+                encrypted_data = f.read()
+                decrypted_data = self.decrypt(encrypted_data)
+                config = json.loads(decrypted_data)
                 self.mtf_threshold_center = config.get('mtf_threshold_center', 0.5)
                 self.mtf_threshold_surround = config.get('mtf_threshold_surround', 0.5)
                 self.mtf_delta_threshold = config.get('mtf_delta_threshold', 0.1)
@@ -56,8 +67,9 @@ class MTFApplication:
             'mtf_threshold_surround': self.mtf_threshold_surround,
             'mtf_delta_threshold': self.mtf_delta_threshold
         }
+        encrypted_data = self.encrypt(json.dumps(config))
         with open(self.config_file, 'w') as f:
-            json.dump(config, f)
+            f.write(encrypted_data)
 
     def setup_ui(self):
         self.create_widgets()
