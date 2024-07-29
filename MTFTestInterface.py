@@ -758,7 +758,7 @@ class SFR:
 def main():
     set_start_method("spawn")
     root = tk.Tk()
-    root.title("MTFTestInterface-v2.3")
+    root.title("MTFTestInterface-v2.4")
     root.geometry("1100x600")
     app = MTFApplication(root)
     root.mainloop()
