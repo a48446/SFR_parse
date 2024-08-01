@@ -40,7 +40,6 @@ class MTFApplication:
         self.setup_ui()
         self.disable_controls()
 
-        # 在關閉視窗時保存閥值
         self.master.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def encrypt(self, data):
